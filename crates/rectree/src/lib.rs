@@ -56,64 +56,90 @@ pub struct Rectree {
 pub struct LayoutCtx<'a> {
     tree: &'a mut Rectree,
     scheduled_relayout: Vec<NodeId>, // Should be moved from `EditCtx`.
-    node_stack: Vec<(NodeId, usize)>,
-    node_child_stack: Vec<NodeId>,
-    constraint_stack: Vec<Constraint>,
+    visited_nodes: HashSet<NodeId>,
+    /// (node, constraint index) stack that is pending for
+    /// [`Layouter::build()`].
+    rebuild_stack: Vec<NodeId>,
+    child_stack: Vec<NodeId>,
+    new_translations: Vec<(NodeId, Vec2)>,
 }
 
 impl LayoutCtx<'_> {
-    pub fn layout(&mut self, layouter: &impl Layouter) {
+    pub fn layout(mut self, layouter: &impl Layouter) {
+        self.visited_nodes.clear();
         while let Some(id) = self.scheduled_relayout.pop() {
-            self.node_stack.clear();
-            self.node_child_stack.clear();
-            self.constraint_stack.clear();
+            self.rebuild_stack.clear();
+            self.child_stack.clear();
 
             let Some(node) = self.tree.get_node(&id) else {
                 continue;
             };
 
-            self.node_stack.push((id, 0));
-            self.node_child_stack.extend(node.children());
-            self.constraint_stack.push(node.constraint());
+            let initial_size = node.size;
 
-            while let Some(id) = self.node_child_stack.pop()
-                && let Some(node) = self.tree.get_node(&id)
-            {
-                if node.children().is_empty() {
-                    continue;
-                }
+            self.rebuild_stack.push(id);
+            self.child_stack.extend(node.children());
 
-                let constraint = layouter.constraint(id);
-                let constraint_index = self.constraint_stack.len();
-                self.constraint_stack.push(constraint);
-
-                for child in node.children() {
-                    let Some(node) = self.tree.get_node(child) else {
-                        continue;
-                    };
-
-                    // Nothing to rebuild if the constraint is still the same.
-                    if node.constraint() != constraint {
-                        self.node_stack
-                            .push((*child, constraint_index));
-                        self.node_child_stack.push(*child);
+            while let Some(id) = self.child_stack.pop() {
+                self.tree.node_scope(&id, |tree, node| {
+                    if node.children().is_empty() {
+                        return;
                     }
-                }
+
+                    let constraint = layouter.constraint(&id, tree);
+
+                    for child in node.children() {
+                        if self.visited_nodes.contains(child) {
+                            continue;
+                        }
+
+                        tree.node_scope(child, |_tree, node| {
+                            // Nothing to rebuild if the constraint is still the same.
+                            if node.constraint != constraint {
+                                node.constraint = constraint;
+                                self.rebuild_stack.push(*child);
+
+                                // Continue down the child tree.
+                                self.child_stack.push(*child);
+                            }
+                        });
+                    }
+                });
             }
 
-            for (id, index) in self.node_stack.drain(..).rev() {
-                let constraint = self.constraint_stack[index];
-                let size = layouter.build(id, constraint, self.tree);
+            for id in self.rebuild_stack.drain(..).rev() {
+                self.tree.node_scope(&id, |tree, node| {
+                    self.new_translations.clear();
 
-                let Some(node) = self.tree.get_node_mut(&id) else {
-                    continue;
-                };
+                    let set_translation =
+                        |id: NodeId, translation: Vec2| {
+                            self.new_translations
+                                .push((id, translation));
+                        };
 
-                // TODO: Reset size mutation state?
-                // Do we need mut_detect here, we could just cache it..?
-                // node.size.set_if_ne(size);
-                *node.size = size;
-                *node.constraint = constraint;
+                    // Build out the size and position the children.
+                    let size =
+                        layouter.build(&id, tree, set_translation);
+
+                    for (id, translation) in
+                        self.new_translations.drain(..)
+                    {
+                        tree.with_node_mut(&id, |node| {
+                            *node.local_translation = translation;
+                        });
+                    }
+
+                    node.size = size;
+                });
+            }
+
+            self.visited_nodes.insert(id);
+
+            if let Some(node) = self.tree.get_node(&id)
+                && node.size != initial_size
+                && let Some(parent) = node.parent
+            {
+                self.scheduled_relayout.push(parent);
             }
         }
     }
@@ -146,9 +172,10 @@ impl<'a> EditCtx<'a> {
                 .rev()
                 .map(|n| n.id)
                 .collect(),
-            node_stack: Vec::new(),
-            node_child_stack: Vec::new(),
-            constraint_stack: Vec::new(),
+            visited_nodes: HashSet::new(),
+            rebuild_stack: Vec::new(),
+            child_stack: Vec::new(),
+            new_translations: Vec::new(),
         }
     }
 }
@@ -241,13 +268,6 @@ impl Rectree {
         self.nodes.get(id)
     }
 
-    pub fn get_node_mut(
-        &mut self,
-        id: &NodeId,
-    ) -> Option<&mut RectNode> {
-        self.nodes.get_mut(id)
-    }
-
     pub fn with_node_mut<F, R>(
         &mut self,
         id: &NodeId,
@@ -260,9 +280,6 @@ impl Rectree {
             let result = f(node);
 
             // Record changes.
-            // if node.size.mutated() {
-            //     let depth_node = DepthNode::new(node.depth, *id);
-            // }
             if node.local_translation.mutated() {
                 self.mutated_translations
                     .insert(DepthNode::new(node.depth, *id));
@@ -270,6 +287,21 @@ impl Rectree {
 
             result
         })
+    }
+
+    pub fn node_scope<F, R>(&mut self, id: &NodeId, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut Self, &mut RectNode) -> R,
+    {
+        let node = self.nodes.remove(id);
+
+        if let Some(mut node) = node {
+            let result = f(self, &mut node);
+            self.nodes.insert_back(id, node);
+            return Some(result);
+        }
+
+        None
     }
 
     pub fn root_ids(&self) -> &HashSet<NodeId> {
@@ -325,35 +357,16 @@ impl Rectree {
 }
 
 pub trait Layouter {
-    fn constraint(&self, id: NodeId) -> Constraint;
+    fn constraint(&self, id: &NodeId, tree: &Rectree) -> Constraint;
 
-    fn build(
+    fn build<F>(
         &self,
-        id: NodeId,
-        constraint: Constraint,
-        tree: &mut Rectree,
-    ) -> Size;
-
-    // fn build_and_reset(
-    //     &self,
-    //     id: NodeId,
-    //     constraint: Constraint,
-    //     tree: &mut Rectree,
-    // ) {
-    //     self.build(id, constraint, tree);
-    //     if let Some(node) = tree.get_node(&id) {
-    //         for child in node
-    //             .children()
-    //             .iter()
-    //             .copied()
-    //             .collect::<alloc::boxed::Box<_>>()
-    //         {
-    //             if let Some(node) = tree.get_node_mut(&child) {
-    //                 node.size.reset_mutation();
-    //             }
-    //         }
-    //     }
-    // }
+        id: &NodeId,
+        tree: &Rectree,
+        set_translation: F,
+    ) -> Size
+    where
+        F: FnMut(NodeId, Vec2);
 }
 
 // TODO: Document that `None` means that it's flexible.

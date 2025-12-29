@@ -57,7 +57,7 @@ fn print_tree(tree: &Rectree) {
             println!(
                 "translation: {}, size: {} #[{}]",
                 node.world_translation(),
-                &*node.size,
+                node.size,
                 id.index()
             );
 
@@ -70,10 +70,10 @@ struct VerticalCenteredList {
     padding: f64,
     // In real world scenario, this should just store the ids
     // mapping to an arena of widgets.
-    children: Vec<(NodeId, Box<dyn Layouter>)>,
+    children: Vec<(NodeId, FixedArea)>,
 }
 
-impl Layouter for VerticalCenteredList {
+impl VerticalCenteredList {
     fn layout(
         &self,
         constraint: Constraint,
@@ -104,7 +104,7 @@ impl Layouter for VerticalCenteredList {
                 tree,
             );
             tree.with_node_mut(child_id, |node| {
-                *node.size = child_size;
+                node.size = child_size;
                 let remainder = max_width - node.size.width;
                 node.local_translation.x = remainder * 0.5;
                 node.local_translation.y = y;
@@ -123,7 +123,7 @@ struct FixedArea {
     pub target_area: f64,
 }
 
-impl Layouter for FixedArea {
+impl FixedArea {
     fn layout(
         &self,
         constraint: Constraint,
@@ -145,19 +145,6 @@ impl Layouter for FixedArea {
             }
         }
     }
-}
-
-pub trait Layouter {
-    fn layout(
-        &self,
-        constraint: Constraint,
-        tree: &mut Rectree,
-    ) -> Size;
-}
-
-pub trait Builder {
-    fn build(&self, constraint: Constraint) -> Vec2;
-    fn position(&self, children: &mut [RectNode]);
 }
 
 pub trait SplatExt {

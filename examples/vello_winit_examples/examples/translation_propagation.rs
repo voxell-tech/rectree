@@ -64,7 +64,7 @@ impl TranslationDemo {
                     // Reconstruct rect from world pos and size.
                     let world_rect = Rect::from_origin_size(
                         world_pos.to_point(),
-                        *node.size,
+                        node.size,
                     );
 
                     // Fetch node color.

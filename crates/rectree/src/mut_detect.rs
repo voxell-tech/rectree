@@ -37,6 +37,8 @@ impl<T: PartialEq> MutDetect<T> {
     /// Set the inner value only if it is not the same.
     ///
     /// Mutated flag will only be turned on if values doesn't match.
+    ///
+    /// Returns `true` if mutated.
     pub fn set_if_ne(&mut self, new_value: T) -> bool {
         if self.inner != new_value {
             self.inner = new_value;

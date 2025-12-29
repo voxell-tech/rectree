@@ -22,13 +22,14 @@ use crate::{Constraint, NodeId};
 #[derive(Default, Debug, Clone)]
 pub struct RectNode {
     pub local_translation: MutDetect<Vec2>,
-    pub size: MutDetect<Size>,
-    /// Constraint from the parent.
-    pub(crate) constraint: MutDetect<Constraint>,
+    pub size: Size,
+    /// Constraint given by the parent.
+    pub(crate) constraint: Constraint,
     pub(crate) world_translation: Vec2,
     pub(crate) parent: Option<NodeId>,
     pub(crate) children: MutDetect<HashSet<NodeId>>,
     /// How deep in the hierarchy is this node (0 for root nodes).
+    /// This can only be assigned by [`crate::Rectree`].
     pub(crate) depth: u32,
 }
 
@@ -69,7 +70,7 @@ impl RectNode {
     }
 
     pub fn with_size(mut self, size: impl Into<Size>) -> Self {
-        *self.size = size.into();
+        self.size = size.into();
         self
     }
 
@@ -82,7 +83,7 @@ impl RectNode {
 /// Getters.
 impl RectNode {
     pub fn constraint(&self) -> Constraint {
-        *self.constraint
+        self.constraint
     }
 
     pub fn world_translation(&self) -> Vec2 {
@@ -108,5 +109,9 @@ impl RectNode {
             self.world_translation.x + self.size.width,
             self.world_translation.y + self.size.height,
         )
+    }
+
+    pub fn is_root(&self) -> bool {
+        self.parent.is_none()
     }
 }
