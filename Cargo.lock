@@ -1421,9 +1421,6 @@ version = "0.1.0"
 dependencies = [
  "hashbrown 0.16.1",
  "kurbo",
- "pollster",
- "vello",
- "winit",
 ]
 
 [[package]]
@@ -1863,6 +1860,18 @@ dependencies = [
  "naga",
  "thiserror 2.0.17",
  "vello_encoding",
+]
+
+[[package]]
+name = "vello_winit_examples"
+version = "0.1.0"
+dependencies = [
+ "hashbrown 0.16.1",
+ "kurbo",
+ "pollster",
+ "rectree",
+ "vello",
+ "winit",
 ]
 
 [[package]]

@@ -1,0 +1,15 @@
+[package]
+name = "rectree"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+hashbrown.workspace = true
+kurbo.workspace = true
+
+[features]
+default = ["std"]
+std = ["kurbo/std"]
+libm = ["kurbo/libm"]
