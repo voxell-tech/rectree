@@ -7,6 +7,13 @@ use vello::peniko::Color;
 use vello_winit_examples::{VelloDemo, VelloWinitApp};
 use winit::event_loop::EventLoop;
 
+fn main() {
+    let event_loop = EventLoop::new().unwrap();
+    let mut app = VelloWinitApp::new(TranslationDemo::new());
+
+    event_loop.run_app(&mut app).unwrap();
+}
+
 struct TranslationDemo {
     tree: Rectree,
     root_id: NodeId,
@@ -114,7 +121,7 @@ impl TranslationDemo {
 
 impl VelloDemo for TranslationDemo {
     fn window_title(&self) -> &'static str {
-        "Rectree Translation Showcase"
+        "Translation Propagation Showcase"
     }
     fn initial_logical_size(&self) -> (f64, f64) {
         (800.0, 600.0)
@@ -135,7 +142,7 @@ impl VelloDemo for TranslationDemo {
 
         // Modify ONLY the parent's local translation.
         self.tree.with_node_mut(&self.root_id, |node| {
-            *node.local_translation = oscillation;
+            *node.translation = oscillation;
         });
 
         // Recalculate world positions.
@@ -144,11 +151,4 @@ impl VelloDemo for TranslationDemo {
         let transform = Affine::translate((150.0, 150.0));
         self.draw_tree(scene, transform);
     }
-}
-
-fn main() {
-    let event_loop = EventLoop::new().unwrap();
-    let mut app = VelloWinitApp::new(TranslationDemo::new());
-
-    event_loop.run_app(&mut app).unwrap();
 }

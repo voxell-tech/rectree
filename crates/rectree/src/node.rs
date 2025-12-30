@@ -21,8 +21,10 @@ use crate::{Constraint, NodeId};
 /// ```
 #[derive(Default, Debug, Clone)]
 pub struct RectNode {
-    pub local_translation: MutDetect<Vec2>,
+    pub translation: MutDetect<Vec2>,
     pub size: Size,
+    // pub visual_translation: Option<Vec2>,
+    // pub visual_size: Option<Size>,
     /// Constraint given by the parent.
     pub(crate) constraint: Constraint,
     pub(crate) world_translation: Vec2,
@@ -65,7 +67,7 @@ impl RectNode {
         mut self,
         translation: impl Into<Vec2>,
     ) -> Self {
-        *self.local_translation = translation.into();
+        *self.translation = translation.into();
         self
     }
 

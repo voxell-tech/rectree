@@ -24,7 +24,7 @@ pub mod sparse_map;
 #[derive(
     Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord,
 )]
-pub struct NodeId(pub Key);
+pub struct NodeId(Key);
 
 impl Deref for NodeId {
     type Target = Key;
@@ -59,17 +59,22 @@ pub struct LayoutCtx<'a> {
     visited_nodes: HashSet<NodeId>,
     /// (node, constraint index) stack that is pending for
     /// [`Layouter::build()`].
-    rebuild_stack: Vec<NodeId>,
+    rebuild_stack: Vec<(NodeId, usize)>,
     child_stack: Vec<NodeId>,
+    constraint_stack: Vec<Constraint>,
     new_translations: Vec<(NodeId, Vec2)>,
 }
 
 impl LayoutCtx<'_> {
-    pub fn layout(mut self, layouter: &impl Layouter) {
+    pub fn layout<L>(mut self, layouter: &L)
+    where
+        L: Layouter,
+    {
         self.visited_nodes.clear();
         while let Some(id) = self.scheduled_relayout.pop() {
             self.rebuild_stack.clear();
             self.child_stack.clear();
+            self.constraint_stack.clear();
 
             let Some(node) = self.tree.get_node(&id) else {
                 continue;
@@ -77,69 +82,85 @@ impl LayoutCtx<'_> {
 
             let initial_size = node.size;
 
-            self.rebuild_stack.push(id);
+            self.rebuild_stack.push((id, 0));
             self.child_stack.extend(node.children());
+            self.constraint_stack.push(node.constraint);
 
+            // Traverse the tree and create the build stack.
             while let Some(id) = self.child_stack.pop() {
-                self.tree.node_scope(&id, |tree, node| {
+                // Skip visited nodes, visited nodes should not be rebuilt.
+                if self.visited_nodes.contains(&id) {
+                    continue;
+                }
+
+                if let Some(node) = self.tree.get_node(&id) {
                     if node.children().is_empty() {
                         return;
                     }
 
-                    let constraint = layouter.constraint(&id, tree);
+                    let constraint =
+                        layouter.constraint(&id, self.tree);
+                    let constraint_index =
+                        self.constraint_stack.len();
+                    self.constraint_stack.push(constraint);
 
                     for child in node.children() {
-                        if self.visited_nodes.contains(child) {
-                            continue;
+                        // Nothing to rebuild if the constraint is still the same.
+                        if node.constraint != constraint {
+                            // node.constraint = constraint;
+                            self.rebuild_stack
+                                .push((*child, constraint_index));
+
+                            // Continue down the child tree.
+                            self.child_stack.push(*child);
                         }
-
-                        tree.node_scope(child, |_tree, node| {
-                            // Nothing to rebuild if the constraint is still the same.
-                            if node.constraint != constraint {
-                                node.constraint = constraint;
-                                self.rebuild_stack.push(*child);
-
-                                // Continue down the child tree.
-                                self.child_stack.push(*child);
-                            }
-                        });
                     }
-                });
+                }
             }
 
-            for id in self.rebuild_stack.drain(..).rev() {
-                self.tree.node_scope(&id, |tree, node| {
-                    self.new_translations.clear();
+            // Build out the size and position the children.
+            for (id, constraint_index) in
+                self.rebuild_stack.drain(..).rev()
+            {
+                self.new_translations.clear();
 
-                    let set_translation =
-                        |id: NodeId, translation: Vec2| {
-                            self.new_translations
-                                .push((id, translation));
-                        };
+                let set_translation =
+                    |id: NodeId, translation: Vec2| {
+                        self.new_translations.push((id, translation));
+                    };
 
-                    // Build out the size and position the children.
-                    let size =
-                        layouter.build(&id, tree, set_translation);
+                self.tree.with_node_mut(&id, |node| {
+                    node.constraint =
+                        self.constraint_stack[constraint_index];
+                });
 
-                    for (id, translation) in
-                        self.new_translations.drain(..)
-                    {
-                        tree.with_node_mut(&id, |node| {
-                            *node.local_translation = translation;
-                        });
-                    }
+                // Build size.
+                let size =
+                    layouter.build(&id, self.tree, set_translation);
 
+                // Update translation.
+                for (id, translation) in
+                    self.new_translations.drain(..)
+                {
+                    self.tree.with_node_mut(&id, |node| {
+                        *node.translation = translation;
+                    });
+                }
+
+                self.tree.with_node_mut(&id, |node| {
                     node.size = size;
                 });
             }
 
             self.visited_nodes.insert(id);
 
+            // Parent needs to relayout when size changes.
             if let Some(node) = self.tree.get_node(&id)
                 && node.size != initial_size
                 && let Some(parent) = node.parent
             {
-                self.scheduled_relayout.push(parent);
+                // FIXME: Optimize this and prevent relayouting the same parent twice!
+                self.scheduled_relayout.insert(0, parent);
             }
         }
     }
@@ -151,6 +172,13 @@ pub struct EditCtx<'a> {
 }
 
 impl<'a> EditCtx<'a> {
+    pub fn new(tree: &'a mut Rectree) -> Self {
+        Self {
+            tree,
+            scheduled_relayout: BTreeSet::new(),
+        }
+    }
+
     pub fn schedule_relayout(&mut self, id: NodeId) -> bool {
         if let Some(node) = self.tree.get_node(&id) {
             return self
@@ -175,6 +203,7 @@ impl<'a> EditCtx<'a> {
             visited_nodes: HashSet::new(),
             rebuild_stack: Vec::new(),
             child_stack: Vec::new(),
+            constraint_stack: Vec::new(),
             new_translations: Vec::new(),
         }
     }
@@ -280,28 +309,13 @@ impl Rectree {
             let result = f(node);
 
             // Record changes.
-            if node.local_translation.mutated() {
+            if node.translation.mutated() {
                 self.mutated_translations
                     .insert(DepthNode::new(node.depth, *id));
             }
 
             result
         })
-    }
-
-    pub fn node_scope<F, R>(&mut self, id: &NodeId, f: F) -> Option<R>
-    where
-        F: FnOnce(&mut Self, &mut RectNode) -> R,
-    {
-        let node = self.nodes.remove(id);
-
-        if let Some(mut node) = node {
-            let result = f(self, &mut node);
-            self.nodes.insert_back(id, node);
-            return Some(result);
-        }
-
-        None
     }
 
     pub fn root_ids(&self) -> &HashSet<NodeId> {
@@ -320,7 +334,7 @@ impl Rectree {
 
             // Translation could have already been resolved by a
             // previous iteration.
-            if !node.local_translation.mutated() {
+            if !node.translation.mutated() {
                 continue;
             }
 
@@ -340,11 +354,11 @@ impl Rectree {
             };
 
             node.world_translation =
-                *node.local_translation + translation_stack[index];
+                *node.translation + translation_stack[index];
 
             // Reset the mutation state once the world translation
             // is being updated.
-            node.local_translation.reset_mutation();
+            node.translation.reset_mutation();
 
             let new_index = translation_stack.len();
             translation_stack.push(node.world_translation);

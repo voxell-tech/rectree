@@ -83,49 +83,6 @@ impl<T> SparseMap<T> {
         }
     }
 
-    /// Insert a value exactly where the given [`Key`] points to.
-    ///
-    /// Returns `true` if the key is valid and the location is empty.
-    ///
-    /// Normally used in conjunction with [`Self::remove`] to
-    /// simulate a scope feature in an outer data structure.
-    ///
-    /// ```
-    /// use rectree::sparse_map::{SparseMap, Key};
-    ///
-    /// struct FooMap{
-    ///     map: SparseMap<u32>,
-    ///     other_data: f32
-    /// }
-    ///
-    /// impl FooMap {
-    ///     pub fn scope<F, R>(&mut self, key: &Key, f: F) -> Option<R>
-    ///     where F: FnOnce(&mut Self, &mut u32) -> R,
-    ///     {
-    ///         let value = self.map.remove(key);
-    ///
-    ///         if let Some(mut value) = value {
-    ///             let result = f(self, &mut value);
-    ///             self.map.insert_back(key, value);
-    ///             return Some(result);
-    ///         }
-    ///
-    ///         None
-    ///     }
-    /// }
-    /// ```
-    pub fn insert_back(&mut self, key: &Key, value: T) -> bool {
-        if let Some(item) = self.buffer.get_mut(key.index)
-            && item.version == key.version
-            && item.inner.is_none()
-        {
-            item.inner = Some(value);
-            return true;
-        }
-
-        false
-    }
-
     /// Removes a value associated with the given key.
     ///
     /// Returns `None` if the key is invalid or already removed.
@@ -166,7 +123,7 @@ impl<T> SparseMap<T> {
             return None;
         }
 
-        // SAFETY: We already checked that they key contains a value.
+        // SAFETY: We already checked that the key contains a value.
         let mut value = self.buffer[key.index].take().unwrap();
         let result = f(self, &mut value);
         self.buffer[key.index].inner = Some(value);
