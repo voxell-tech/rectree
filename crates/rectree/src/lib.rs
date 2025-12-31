@@ -55,7 +55,7 @@ pub struct Rectree {
 // TODO: Separate states from the tree data into "contexts".
 pub struct LayoutCtx<'a> {
     tree: &'a mut Rectree,
-    scheduled_relayout: Vec<NodeId>, // Should be moved from `EditCtx`.
+    scheduled_relayout: BTreeSet<DepthNode>, // Should be moved from `EditCtx`.
     visited_nodes: HashSet<NodeId>,
     /// (node, constraint index) stack that is pending for
     /// [`Layouter::build()`].
@@ -65,13 +65,41 @@ pub struct LayoutCtx<'a> {
     new_translations: Vec<(NodeId, Vec2)>,
 }
 
-impl LayoutCtx<'_> {
+impl<'a> LayoutCtx<'a> {
+    pub fn new(tree: &'a mut Rectree) -> Self {
+        Self {
+            tree,
+            scheduled_relayout: BTreeSet::new(),
+            visited_nodes: HashSet::new(),
+            rebuild_stack: Vec::new(),
+            child_stack: Vec::new(),
+            constraint_stack: Vec::new(),
+            new_translations: Vec::new(),
+        }
+    }
+
+    pub fn schedule_relayout(&mut self, id: NodeId) -> bool {
+        if let Some(node) = self.tree.get_node(&id) {
+            return self
+                .scheduled_relayout
+                .insert(DepthNode::new(node.depth, id));
+        }
+
+        false
+    }
+
     pub fn layout<L>(mut self, layouter: &L)
     where
         L: Layouter,
     {
         self.visited_nodes.clear();
-        while let Some(id) = self.scheduled_relayout.pop() {
+
+        // Pop the deepest nodes first to ensure children are finalized before parents.
+        while let Some(depth_node) =
+            self.scheduled_relayout.pop_last()
+        {
+            let id = depth_node.id;
+
             self.rebuild_stack.clear();
             self.child_stack.clear();
             self.constraint_stack.clear();
@@ -94,27 +122,18 @@ impl LayoutCtx<'_> {
                 }
 
                 if let Some(node) = self.tree.get_node(&id) {
-                    if node.children().is_empty() {
-                        return;
-                    }
-
                     let constraint =
                         layouter.constraint(&id, self.tree);
                     let constraint_index =
                         self.constraint_stack.len();
                     self.constraint_stack.push(constraint);
 
-                    for child in node.children() {
-                        // Nothing to rebuild if the constraint is still the same.
-                        if node.constraint != constraint {
-                            // node.constraint = constraint;
-                            self.rebuild_stack
-                                .push((*child, constraint_index));
-
-                            // Continue down the child tree.
-                            self.child_stack.push(*child);
-                        }
+                    // Nothing to rebuild if the constraint is still the same.
+                    if node.constraint != constraint {
+                        self.rebuild_stack
+                            .push((id, constraint_index));
                     }
+                    self.child_stack.extend(node.children());
                 }
             }
 
@@ -154,57 +173,18 @@ impl LayoutCtx<'_> {
 
             self.visited_nodes.insert(id);
 
-            // Parent needs to relayout when size changes.
+            // Schedule relayout if size changed.
             if let Some(node) = self.tree.get_node(&id)
                 && node.size != initial_size
-                && let Some(parent) = node.parent
+                && let Some(parent_id) = node.parent
+                && let Some(parent_node) =
+                    self.tree.get_node(&parent_id)
             {
-                // FIXME: Optimize this and prevent relayouting the same parent twice!
-                self.scheduled_relayout.insert(0, parent);
+                self.scheduled_relayout.insert(DepthNode::new(
+                    parent_node.depth,
+                    parent_id,
+                ));
             }
-        }
-    }
-}
-
-pub struct EditCtx<'a> {
-    tree: &'a mut Rectree,
-    scheduled_relayout: BTreeSet<DepthNode>,
-}
-
-impl<'a> EditCtx<'a> {
-    pub fn new(tree: &'a mut Rectree) -> Self {
-        Self {
-            tree,
-            scheduled_relayout: BTreeSet::new(),
-        }
-    }
-
-    pub fn schedule_relayout(&mut self, id: NodeId) -> bool {
-        if let Some(node) = self.tree.get_node(&id) {
-            return self
-                .scheduled_relayout
-                .insert(DepthNode::new(node.depth, id));
-        }
-
-        false
-    }
-
-    // TODO: Think of a better name.
-    pub fn compile(self) -> LayoutCtx<'a> {
-        LayoutCtx {
-            tree: self.tree,
-            scheduled_relayout: self
-                .scheduled_relayout
-                .into_iter()
-                // Layout happens bottom-up.
-                .rev()
-                .map(|n| n.id)
-                .collect(),
-            visited_nodes: HashSet::new(),
-            rebuild_stack: Vec::new(),
-            child_stack: Vec::new(),
-            constraint_stack: Vec::new(),
-            new_translations: Vec::new(),
         }
     }
 }
