@@ -151,20 +151,17 @@ impl LayoutCtx<'_> {
 
             self.visited_nodes.insert(id);
 
-            // Fetch parent depth and schedule relayout if size changed.
+            // Schedule relayout if size changed.
             if let Some(node) = self.tree.get_node(&id)
                 && node.size != initial_size
                 && let Some(parent_id) = node.parent
-            {
-                if let Some(parent_node) =
+                && let Some(parent_node) =
                     self.tree.get_node(&parent_id)
-                {
-                    // BTreeSet only allows unique DepthNode entries.
-                    self.scheduled_relayout.insert(DepthNode::new(
-                        parent_node.depth,
-                        parent_id,
-                    ));
-                }
+            {
+                self.scheduled_relayout.insert(DepthNode::new(
+                    parent_node.depth,
+                    parent_id,
+                ));
             }
         }
     }
