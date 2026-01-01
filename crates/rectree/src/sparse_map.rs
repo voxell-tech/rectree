@@ -140,15 +140,6 @@ impl<T> SparseMap<T> {
         })
     }
 
-    // FIXME: This is incorrect as newly added values may make old
-    // keys vaild again when they shouldn't be.
-    // TODO: Should we just not support clearing a map?
-    // /// Removes all values and invalidates all keys.
-    // pub fn clear(&mut self) {
-    //     self.buffer.clear();
-    //     self.empty_slots.clear();
-    // }
-
     pub fn len(&self) -> usize {
         self.buffer.len() - self.empty_slots.len()
     }
@@ -244,6 +235,7 @@ impl<T> Item<T> {
     }
 }
 
+// FIXME: Make this more robust? Or we don't need it?
 // pub struct SparseMapIter<'a, T> {
 //     buffer: &'a [SparseItem<T>],
 //     curr_index: usize,
