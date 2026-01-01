@@ -1,8 +1,9 @@
 use hashbrown::HashSet;
 use kurbo::{Rect, Size, Vec2};
 
+use crate::NodeId;
+use crate::layout::Constraint;
 use crate::mut_detect::MutDetect;
-use crate::{Constraint, NodeId};
 
 /// An axis-aligned rectangle in the layout tree.
 ///

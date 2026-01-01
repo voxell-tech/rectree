@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use hashbrown::HashSet;
 use kurbo::{Size, Vec2};
 
-use crate::{Constraint, DepthNode, NodeId, Rectree};
+use crate::{NodeId, Rectree};
 
 pub struct LayoutCtx<'a> {
     tree: &'a mut Rectree,
@@ -29,9 +29,9 @@ impl<'a> LayoutCtx<'a> {
         false
     }
 
-    pub fn layout<L>(mut self, layouter: &L)
+    pub fn layout<T>(mut self, solver: &T)
     where
-        L: Layouter,
+        T: LayoutSolver,
     {
         // Initialize reusable heap allocations.
         let mut visited_nodes = HashSet::<NodeId>::new(); // TODO: Could we avoid using a hashset?
@@ -66,7 +66,7 @@ impl<'a> LayoutCtx<'a> {
                 }
 
                 let node = self.tree.get(&id);
-                let constraint = layouter.constraint(&id, self.tree);
+                let constraint = solver.constraint(&id, self.tree);
                 let constraint_index = constraint_stack.len();
                 constraint_stack.push(constraint);
 
@@ -99,7 +99,7 @@ impl<'a> LayoutCtx<'a> {
 
                 // Build size.
                 let size =
-                    layouter.build(&id, self.tree, set_translation);
+                    solver.build(&id, self.tree, set_translation);
 
                 // Update translation.
                 for (id, translation) in new_translations.drain(..) {
@@ -164,7 +164,7 @@ impl<'a> LayoutCtx<'a> {
     }
 }
 
-pub trait Layouter {
+pub trait LayoutSolver {
     fn constraint(&self, id: &NodeId, tree: &Rectree) -> Constraint;
 
     fn build<F>(
@@ -175,4 +175,63 @@ pub trait Layouter {
     ) -> Size
     where
         F: FnMut(NodeId, Vec2);
+}
+
+/// [`NodeId`] cache with depth as the primary value for sorting.
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
+struct DepthNode {
+    depth: u32,
+    id: NodeId,
+}
+
+impl DepthNode {
+    fn new(depth: u32, id: NodeId) -> Self {
+        Self { depth, id }
+    }
+}
+
+/// Size constraints applied to a node during layout.
+///
+/// A value of `Some(f64)` fixes the corresponding dimension to an
+/// explicit size, while `None` indicates that the dimension is
+/// unconstrained (flexible) and may be determined by layout.
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
+pub struct Constraint {
+    // Fixed width constraint, or `None` if flexible.
+    pub width: Option<f64>,
+    // Fixed height constraint, or `None` if flexible.
+    pub height: Option<f64>,
+}
+
+impl Constraint {
+    /// Creates a constraint with both width and height fixed.
+    pub fn fixed(width: f64, height: f64) -> Self {
+        Self {
+            width: Some(width),
+            height: Some(height),
+        }
+    }
+
+    /// Creates a constraint with a fixed width and flexible height.
+    pub fn fixed_width(width: f64) -> Self {
+        Self {
+            width: Some(width),
+            height: None,
+        }
+    }
+
+    /// Creates a constraint with a fixed height and flexible width.
+    pub fn fixed_height(height: f64) -> Self {
+        Self {
+            width: None,
+            height: Some(height),
+        }
+    }
+
+    /// Creates a fully flexible constraint with no fixed dimensions.
+    pub fn flexible() -> Self {
+        Self::default()
+    }
 }

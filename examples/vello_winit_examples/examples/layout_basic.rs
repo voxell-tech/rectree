@@ -1,8 +1,8 @@
 use hashbrown::HashMap;
 use kurbo::{Affine, Circle, Rect, Size, Stroke, Vec2};
-use rectree::layout::{LayoutCtx, Layouter};
+use rectree::layout::{Constraint, LayoutCtx, LayoutSolver};
 use rectree::node::RectNode;
-use rectree::{Constraint, NodeId, Rectree};
+use rectree::{NodeId, Rectree};
 use vello::Scene;
 use vello::peniko::Color;
 use vello_winit_examples::{VelloDemo, VelloWinitApp};
@@ -59,7 +59,7 @@ struct World {
     node_colors: HashMap<NodeId, Color>,
 }
 
-impl Layouter for World {
+impl LayoutSolver for World {
     fn constraint(
         &self,
         _id: &NodeId,
