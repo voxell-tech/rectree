@@ -64,7 +64,7 @@ impl Layouter for World {
         _id: &NodeId,
         _tree: &Rectree,
     ) -> Constraint {
-        Constraint::from_none()
+        Constraint::flexible()
     }
 
     fn build<F>(

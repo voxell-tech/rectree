@@ -51,13 +51,6 @@ impl Display for NodeId {
 //     pub fn into_tree() -> Rectree {}
 // }
 
-#[derive(Default, Debug)]
-pub struct Rectree {
-    root_ids: HashSet<NodeId>,
-    nodes: SparseMap<RectNode>,
-}
-
-// TODO: Separate states from the tree data into "contexts".
 pub struct LayoutCtx<'a> {
     tree: &'a mut Rectree,
     scheduled_relayout: BTreeSet<DepthNode>, // Should be moved from `EditCtx`.
@@ -166,11 +159,11 @@ impl<'a> LayoutCtx<'a> {
             // Schedule relayout if size changed.
             let node = self.tree.get(&id);
             if node.size != initial_size
-                && let Some(parent_id) = node.parent
+                && let Some(parent) = node.parent
             {
-                let parent_node = self.tree.get(&parent_id);
+                let parent_node = self.tree.get(&parent);
                 let depth_node =
-                    DepthNode::new(parent_node.depth, parent_id);
+                    DepthNode::new(parent_node.depth, parent);
 
                 self.scheduled_relayout.insert(depth_node);
                 mutated_translations.insert(depth_node);
@@ -179,10 +172,7 @@ impl<'a> LayoutCtx<'a> {
 
         // Propagate translations.
         for DepthNode { id, .. } in mutated_translations.into_iter() {
-            let Some(node) = self.tree.nodes.get(&id) else {
-                // TODO: Log error, or panic?
-                continue;
-            };
+            let node = self.tree.get(&id);
 
             // Translation could have already been resolved by a
             // previous iteration.
@@ -200,10 +190,7 @@ impl<'a> LayoutCtx<'a> {
         let mut translation_stack = vec![Vec2::ZERO];
 
         while let Some((id, index)) = node_stack.pop() {
-            let Some(node) = self.tree.nodes.get_mut(&id) else {
-                // TODO: Log error, or panic?
-                continue;
-            };
+            let node = self.tree.get_mut(&id);
 
             node.world_translation =
                 *node.translation + translation_stack[index];
@@ -222,22 +209,29 @@ impl<'a> LayoutCtx<'a> {
     }
 }
 
-/// [`NodeId`] cache with depth as the primary value for sorting.
-#[derive(
-    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord,
-)]
-struct DepthNode {
-    depth: u32,
-    id: NodeId,
-}
-
-impl DepthNode {
-    fn new(depth: u32, id: NodeId) -> Self {
-        Self { depth, id }
-    }
+/// A hierarchical tree of rectangular layout nodes.
+///
+/// `Rectree` maintains parent–child relationships between [`RectNode`]s,
+/// supports multiple root nodes, and provides stable [`NodeId`]s for
+/// insertion, lookup, and removal.
+///
+/// The tree owns all nodes and ensures structural consistency when
+/// inserting or removing subtrees.
+#[derive(Default, Debug)]
+pub struct Rectree {
+    /// Identifiers of all root nodes (nodes without a parent).
+    root_ids: HashSet<NodeId>,
+    /// Storage for all nodes in the tree, indexed by [`NodeId`].
+    ///
+    /// This uses a sparse map to provide stable identifiers while
+    /// allowing efficient insertion and removal.
+    nodes: SparseMap<RectNode>,
 }
 
 impl Rectree {
+    /// Creates an empty [`Rectree`].
+    ///
+    /// This is equivalent to calling [`Default::default`].
     pub fn new() -> Self {
         Self::default()
     }
@@ -247,14 +241,15 @@ impl Rectree {
     ///
     /// # Panics
     ///
-    /// Panics if an invalid parent `NodeId` is used.
+    /// Panics if an invalid parent [`NodeId`] is used.
     pub fn insert(&mut self, mut node: RectNode) -> NodeId {
         let key = self.nodes.insert_with_key(|nodes, key| {
             let id = NodeId(key);
             if let Some(parent) = node.parent {
-                let parent_node = nodes
-                    .get_mut(&parent)
-                    .expect("Invalid parent Id.");
+                let parent_node =
+                    nodes.get_mut(&parent).unwrap_or_else(|| {
+                        panic!("Invalid parent Id ({parent}).")
+                    });
 
                 parent_node.children.insert(id);
                 node.depth = parent_node.depth + 1;
@@ -269,7 +264,10 @@ impl Rectree {
         NodeId(key)
     }
 
-    /// Removes a node and its children recursively.
+    /// Removes a node and all of its descendants from the tree.
+    ///
+    /// Returns `true` if the node existed and was removed, or `false`
+    /// if the given [`NodeId`] does not exist.
     pub fn remove(&mut self, id: &NodeId) -> bool {
         if let Some(node) = self.nodes.get(id) {
             if let Some(parent) =
@@ -289,24 +287,28 @@ impl Rectree {
     // TODO: Support detach node -> fragment.
     // TODO: Support insert fragment.
 
+    /// Recursively removes a node and all of its descendants.
+    ///
+    /// This is an internal helper used by [`Self::remove()`].
+    /// It assumes that any necessary parent bookkeeping has already
+    /// been handled.
     fn remove_recursive(&mut self, id: &NodeId) {
-        let mut node_stack = vec![*id];
+        let mut child_stack = vec![*id];
 
-        while let Some(id) = node_stack.pop() {
-            let Some(node) = self.nodes.get_mut(&id) else {
-                // TODO: Log error, or panic?
-                continue;
-            };
+        while let Some(id) = child_stack.pop() {
+            let node = self.get(&id);
 
-            node_stack.extend(node.children());
+            child_stack.extend(node.children());
             self.nodes.remove(&id);
         }
     }
 
+    /// Returns an immutable reference to a node if it exists.
     pub fn try_get(&self, id: &NodeId) -> Option<&RectNode> {
         self.nodes.get(id)
     }
 
+    /// Returns a mutable reference to a node if it exists.
     pub fn try_get_mut(
         &mut self,
         id: &NodeId,
@@ -314,18 +316,31 @@ impl Rectree {
         self.nodes.get_mut(id)
     }
 
+    /// Returns an immutable reference to a node.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given [`NodeId`] does not exist in the tree.
     pub fn get(&self, id: &NodeId) -> &RectNode {
         self.try_get(id).unwrap_or_else(|| {
             panic!("{id} does not exists in tree.")
         })
     }
 
+    /// Returns a mutable reference to a node.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given [`NodeId`] does not exist in the tree.
     pub fn get_mut(&mut self, id: &NodeId) -> &mut RectNode {
         self.try_get_mut(id).unwrap_or_else(|| {
             panic!("{id} does not exists in tree.")
         })
     }
 
+    /// Returns the set of root node identifiers.
+    ///
+    /// Root nodes are nodes that do not have a parent.
     pub fn root_ids(&self) -> &HashSet<NodeId> {
         &self.root_ids
     }
@@ -344,36 +359,61 @@ pub trait Layouter {
         F: FnMut(NodeId, Vec2);
 }
 
-// TODO: Document that `None` means that it's flexible.
+/// [`NodeId`] cache with depth as the primary value for sorting.
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
+struct DepthNode {
+    depth: u32,
+    id: NodeId,
+}
+
+impl DepthNode {
+    fn new(depth: u32, id: NodeId) -> Self {
+        Self { depth, id }
+    }
+}
+
+/// Size constraints applied to a node during layout.
+///
+/// A value of `Some(f64)` fixes the corresponding dimension to an
+/// explicit size, while `None` indicates that the dimension is
+/// unconstrained (flexible) and may be determined by layout.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct Constraint {
+    // Fixed width constraint, or `None` if flexible.
     pub width: Option<f64>,
+    // Fixed height constraint, or `None` if flexible.
     pub height: Option<f64>,
 }
 
 impl Constraint {
-    pub fn from_both(width: f64, height: f64) -> Self {
+    /// Creates a constraint with both width and height fixed.
+    pub fn fixed(width: f64, height: f64) -> Self {
         Self {
             width: Some(width),
             height: Some(height),
         }
     }
 
-    pub fn from_width(width: f64) -> Self {
+    /// Creates a constraint with a fixed width and flexible height.
+    pub fn fixed_width(width: f64) -> Self {
         Self {
             width: Some(width),
             height: None,
         }
     }
 
-    pub fn from_height(height: f64) -> Self {
+    /// Creates a constraint with a fixed height and flexible width.
+    pub fn fixed_height(height: f64) -> Self {
         Self {
             width: None,
             height: Some(height),
         }
     }
 
-    pub fn from_none() -> Self {
+    /// Creates a fully flexible constraint with no fixed dimensions.
+    pub fn flexible() -> Self {
         Self::default()
     }
 }
