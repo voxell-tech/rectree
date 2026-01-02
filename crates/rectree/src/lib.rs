@@ -19,25 +19,6 @@ pub mod mut_detect;
 pub mod node;
 pub mod sparse_map;
 
-#[derive(
-    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord,
-)]
-pub struct NodeId(Key);
-
-impl Deref for NodeId {
-    type Target = Key;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Display for NodeId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.write_fmt(format_args!("NodeId({})", self.0))
-    }
-}
-
 /// A hierarchical tree of rectangular layout nodes.
 ///
 /// `Rectree` maintains parent–child relationships between [`RectNode`]s,
@@ -112,10 +93,6 @@ impl Rectree {
         false
     }
 
-    // TODO: RectreeFragment (below).
-    // TODO: Support detach node -> fragment.
-    // TODO: Support attach fragment.
-
     /// Recursively removes a node and all of its descendants.
     ///
     /// This is an internal helper used by [`Self::remove()`].
@@ -175,6 +152,29 @@ impl Rectree {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
+pub struct NodeId(Key);
+
+impl Deref for NodeId {
+    type Target = Key;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("NodeId({})", self.0))
+    }
+}
+
+// TODO: RectreeFragment (below).
+// TODO: Support detach node -> fragment.
+// TODO: Support attach fragment.
+//
 // #[derive(Debug)]
 // pub struct RectreeFragment {
 //     root_ids: NodeId,

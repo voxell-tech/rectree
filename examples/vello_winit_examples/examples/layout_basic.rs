@@ -12,42 +12,31 @@ const AREA: f64 = 2500.0;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
-    let mut tree = Rectree::new();
-    let mut world = World::default();
+    let mut demo = LayoutDemo::new();
 
-    // TODO: Simplify this process!
-    let vertical_id = tree.insert(RectNode::new());
-    world
-        .node_colors
-        .insert(vertical_id, Color::from_rgb8(200, 200, 10));
-
-    let areas = [FixedArea {
-        use_width: false,
-        target_area: AREA,
-    }; 5];
-    let area_ids = areas
-        .iter()
-        .map(|_| {
-            tree.insert(RectNode::new().with_parent(vertical_id))
-        })
-        .collect::<Vec<_>>();
-
-    for (i, id) in area_ids.iter().enumerate() {
-        world.areas.insert(*id, areas[i]);
-        world
-            .node_colors
-            .insert(*id, Color::from_rgb8(10, 200, 200));
-    }
-
-    world.verticals.insert(
-        vertical_id,
-        VerticalCenteredList {
+    demo.add_vertical(
+        None,
+        Color::from_rgb8(200, 200, 10),
+        |demo, id| VerticalCenteredList {
             padding: 20.0,
-            children: area_ids,
+            children: (0..5)
+                .map(|_i| {
+                    let area = FixedArea {
+                        use_width: false,
+                        target_area: AREA,
+                    };
+
+                    demo.add_area(
+                        Some(id),
+                        Color::from_rgb8(10, 200, 200),
+                        |_, _| area,
+                    )
+                })
+                .collect(),
         },
     );
 
-    let mut app = VelloWinitApp::new(LayoutDemo::new(tree, world));
+    let mut app = VelloWinitApp::new(demo);
 
     event_loop.run_app(&mut app).unwrap();
 }
@@ -149,6 +138,47 @@ struct FixedArea {
     pub target_area: f64,
 }
 
+// impl Widget for FixedArea {
+//     fn constraint(&self) -> Constraint {
+//         Constraint::flexible()
+//     }
+
+//     fn build<F>(&self, node: &RectNode, _: &Rectree, _: F) -> Size
+//     where
+//         F: FnMut(NodeId, Vec2),
+//     {
+//         let constraint = node.constraint();
+//         match (constraint.width, constraint.height) {
+//             (None, None) => {
+//                 // Square
+//                 Size::splat(self.target_area.sqrt())
+//             }
+//             (None, Some(h)) => Size::new(self.target_area / h, h),
+//             (Some(w), None) => Size::new(w, self.target_area / w),
+//             (Some(w), Some(h)) => {
+//                 if self.use_width {
+//                     Size::new(w, self.target_area / w)
+//                 } else {
+//                     Size::new(self.target_area / h, h)
+//                 }
+//             }
+//         }
+//     }
+// }
+
+// pub trait Widget {
+//     fn constraint(&self) -> Constraint;
+
+//     fn build<F>(
+//         &self,
+//         node: &RectNode,
+//         tree: &Rectree,
+//         set_translation: F,
+//     ) -> Size
+//     where
+//         F: FnMut(NodeId, Vec2);
+// }
+
 // impl FixedArea {
 //     fn layout(&self, constraint: Constraint) -> Size {
 //         match (constraint.width, constraint.height) {
@@ -176,8 +206,52 @@ struct LayoutDemo {
 }
 
 impl LayoutDemo {
-    fn new(tree: Rectree, world: World) -> Self {
-        Self { tree, world }
+    fn new() -> Self {
+        Self {
+            tree: Rectree::new(),
+            world: World::default(),
+        }
+    }
+
+    fn add_area(
+        &mut self,
+        parent: Option<NodeId>,
+        color: Color,
+        add_content: impl FnOnce(&mut Self, NodeId) -> FixedArea,
+    ) -> NodeId {
+        let mut node = RectNode::new();
+        if let Some(parent) = parent {
+            node = node.with_parent(parent);
+        }
+        let id = self.tree.insert(node);
+
+        let c = add_content(self, id);
+        self.world.areas.insert(id, c);
+        self.world.node_colors.insert(id, color);
+
+        id
+    }
+
+    fn add_vertical(
+        &mut self,
+        parent: Option<NodeId>,
+        color: Color,
+        add_content: impl FnOnce(
+            &mut Self,
+            NodeId,
+        ) -> VerticalCenteredList,
+    ) -> NodeId {
+        let mut node = RectNode::new();
+        if let Some(parent) = parent {
+            node = node.with_parent(parent);
+        }
+        let id = self.tree.insert(node);
+
+        let c = add_content(self, id);
+        self.world.verticals.insert(id, c);
+        self.world.node_colors.insert(id, color);
+
+        id
     }
 
     fn draw_tree(&self, scene: &mut Scene, transform: Affine) {

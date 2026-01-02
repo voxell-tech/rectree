@@ -7,9 +7,6 @@ use kurbo::{Size, Vec2};
 use crate::{NodeId, Rectree};
 
 /// Layout execution context for a [`Rectree`].
-///
-/// `LayoutCtx` collects nodes that require relayout and executes a
-/// bottom-up layout pass using a user-provided [`LayoutSolver`].
 pub struct LayoutCtx<'a> {
     /// The tree being laid out.
     tree: &'a mut Rectree,
