@@ -180,26 +180,6 @@ pub trait Widget {
     ) -> Size;
 }
 
-// impl FixedArea {
-//     fn layout(&self, constraint: Constraint) -> Size {
-//         match (constraint.width, constraint.height) {
-//             (None, None) => {
-//                 // Square
-//                 Size::splat(self.target_area.sqrt())
-//             }
-//             (None, Some(h)) => Size::new(self.target_area / h, h),
-//             (Some(w), None) => Size::new(w, self.target_area / w),
-//             (Some(w), Some(h)) => {
-//                 if self.use_width {
-//                     Size::new(w, self.target_area / w)
-//                 } else {
-//                     Size::new(self.target_area / h, h)
-//                 }
-//             }
-//         }
-//     }
-// }
-
 struct LayoutDemo {
     tree: Rectree,
     world: World,
