@@ -12,6 +12,3 @@ repository = "https://github.com/voxell-tech/rectree"
 rectree = { version = "0.1.0", path = "crates/rectree" }
 hashbrown = { version = "0.16.1", default-features = false, features = ["default-hasher", "inline-more"] }
 kurbo = { version = "0.12.0", default-features = false }
-winit = "0.30.12"
-vello = "0.6"
-pollster = "0.4.0"

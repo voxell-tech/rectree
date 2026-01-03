@@ -1,6 +1,8 @@
+use std::any::Any;
+
 use hashbrown::HashMap;
 use kurbo::{Affine, Circle, Rect, Size, Stroke, Vec2};
-use rectree::layout::{Constraint, LayoutCtx, LayoutSolver};
+use rectree::layout::{Constraint, LayoutSolver, Positioner};
 use rectree::node::RectNode;
 use rectree::{NodeId, Rectree};
 use vello::Scene;
@@ -12,121 +14,70 @@ const AREA: f64 = 2500.0;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
-    let mut tree = Rectree::new();
-    let mut world = World::default();
+    let mut demo = LayoutDemo::new();
 
-    // TODO: Simplify this process!
-    let vertical_id = tree.insert(RectNode::new());
-    world
-        .node_colors
-        .insert(vertical_id, Color::from_rgb8(200, 200, 10));
-
-    let areas = [FixedArea {
-        use_width: false,
-        target_area: AREA,
-    }; 5];
-    let area_ids = areas
-        .iter()
-        .map(|_| {
-            tree.insert(RectNode::new().with_parent(vertical_id))
-        })
-        .collect::<Vec<_>>();
-
-    for (i, id) in area_ids.iter().enumerate() {
-        world.areas.insert(*id, areas[i]);
-        world
-            .node_colors
-            .insert(*id, Color::from_rgb8(10, 200, 200));
-    }
-
-    world.verticals.insert(
-        vertical_id,
-        VerticalCenteredList {
+    demo.add_widget(
+        None,
+        Color::from_rgb8(200, 200, 10),
+        |demo, id| VerticalCenteredList {
             padding: 20.0,
-            children: area_ids,
+            children: (0..5)
+                .map(|_i| {
+                    let area = FixedArea {
+                        use_width: false,
+                        target_area: AREA,
+                    };
+
+                    demo.add_widget(
+                        Some(id),
+                        Color::from_rgb8(10, 200, 200),
+                        |_, _| area,
+                    )
+                })
+                .collect(),
         },
     );
+    // Initial layout.
+    demo.tree.layout(&demo.world);
 
-    let mut app = VelloWinitApp::new(LayoutDemo::new(tree, world));
+    let mut app = VelloWinitApp::new(demo);
 
     event_loop.run_app(&mut app).unwrap();
 }
 
-#[derive(Default, Debug)]
 struct World {
-    areas: HashMap<NodeId, FixedArea>,
-    verticals: HashMap<NodeId, VerticalCenteredList>,
+    widgets: HashMap<NodeId, Box<dyn Widget>>,
     node_colors: HashMap<NodeId, Color>,
 }
 
+impl World {
+    pub fn new() -> Self {
+        Self {
+            widgets: HashMap::new(),
+            node_colors: HashMap::new(),
+        }
+    }
+}
+
 impl LayoutSolver for World {
-    fn constraint(
-        &self,
-        _id: &NodeId,
-        _tree: &Rectree,
-    ) -> Constraint {
+    fn constraint(&self, id: &NodeId) -> Constraint {
+        if let Some(widget) = self.widgets.get(id) {
+            return widget.constraint();
+        }
+
         Constraint::flexible()
     }
 
-    fn build<F>(
+    fn build(
         &self,
         id: &NodeId,
         tree: &Rectree,
-        mut set_translation: F,
-    ) -> Size
-    where
-        F: FnMut(NodeId, Vec2),
-    {
-        if let Some(area) = self.areas.get(id)
+        positioner: &mut Positioner,
+    ) -> Size {
+        if let Some(widget) = self.widgets.get(id)
             && let Some(node) = tree.try_get(id)
         {
-            let constraint = node.constraint();
-            return match (constraint.width, constraint.height) {
-                (None, None) => {
-                    // Square
-                    Size::splat(area.target_area.sqrt())
-                }
-                (None, Some(h)) => Size::new(area.target_area / h, h),
-                (Some(w), None) => Size::new(w, area.target_area / w),
-                (Some(w), Some(h)) => {
-                    if area.use_width {
-                        Size::new(w, area.target_area / w)
-                    } else {
-                        Size::new(area.target_area / h, h)
-                    }
-                }
-            };
-        } else if let Some(vertical) = self.verticals.get(id)
-            && let Some(node) = tree.try_get(id)
-        {
-            let width =
-                node.constraint().width.unwrap_or_else(|| {
-                    let mut max_width = 0.0;
-
-                    for id in vertical.children.iter() {
-                        if let Some(node) = tree.try_get(id) {
-                            max_width =
-                                node.size.width.max(max_width);
-                        }
-                    }
-
-                    max_width
-                }) + vertical.padding * 2.0;
-
-            let mut height = vertical.padding;
-            for id in vertical.children.iter() {
-                if let Some(node) = tree.try_get(id) {
-                    let remainder = width - node.size.width;
-
-                    let x = remainder * 0.5;
-                    let y = height;
-                    set_translation(*id, Vec2::new(x, y));
-
-                    height += node.size.height + vertical.padding;
-                }
-            }
-
-            return Size::new(width, height);
+            return widget.build(node, tree, positioner);
         }
 
         unreachable!("{id:?}")
@@ -141,6 +92,45 @@ struct VerticalCenteredList {
     children: Vec<NodeId>,
 }
 
+impl Widget for VerticalCenteredList {
+    fn constraint(&self) -> Constraint {
+        Constraint::flexible()
+    }
+
+    fn build(
+        &self,
+        node: &RectNode,
+        tree: &Rectree,
+        positioner: &mut Positioner,
+    ) -> Size {
+        let width = node.constraint().width.unwrap_or_else(|| {
+            let mut max_width = 0.0;
+
+            for id in self.children.iter() {
+                let node = tree.get(id);
+                max_width = node.size.width.max(max_width);
+            }
+
+            max_width
+        }) + self.padding * 2.0;
+
+        let mut height = self.padding;
+        for id in self.children.iter() {
+            if let Some(node) = tree.try_get(id) {
+                let remainder = width - node.size.width;
+
+                let x = remainder * 0.5;
+                let y = height;
+                positioner.set(*id, Vec2::new(x, y));
+
+                height += node.size.height + self.padding;
+            }
+        }
+
+        Size::new(width, height)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct FixedArea {
     /// Use width if constrained on both axis.
@@ -149,35 +139,80 @@ struct FixedArea {
     pub target_area: f64,
 }
 
-// impl FixedArea {
-//     fn layout(&self, constraint: Constraint) -> Size {
-//         match (constraint.width, constraint.height) {
-//             (None, None) => {
-//                 // Square
-//                 Size::splat(self.target_area.sqrt())
-//             }
-//             (None, Some(h)) => Size::new(self.target_area / h, h),
-//             (Some(w), None) => Size::new(w, self.target_area / w),
-//             (Some(w), Some(h)) => {
-//                 if self.use_width {
-//                     Size::new(w, self.target_area / w)
-//                 } else {
-//                     Size::new(self.target_area / h, h)
-//                 }
-//             }
-//         }
-//     }
-// }
+impl Widget for FixedArea {
+    fn constraint(&self) -> Constraint {
+        Constraint::flexible()
+    }
 
-#[derive(Default)]
+    fn build(
+        &self,
+        node: &RectNode,
+        _: &Rectree,
+        _: &mut Positioner,
+    ) -> Size {
+        let constraint = node.constraint();
+        match (constraint.width, constraint.height) {
+            (None, None) => {
+                // Square
+                Size::splat(self.target_area.sqrt())
+            }
+            (None, Some(h)) => Size::new(self.target_area / h, h),
+            (Some(w), None) => Size::new(w, self.target_area / w),
+            (Some(w), Some(h)) => {
+                if self.use_width {
+                    Size::new(w, self.target_area / w)
+                } else {
+                    Size::new(self.target_area / h, h)
+                }
+            }
+        }
+    }
+}
+
+pub trait Widget: Any {
+    fn constraint(&self) -> Constraint;
+
+    fn build(
+        &self,
+        node: &RectNode,
+        tree: &Rectree,
+        positioner: &mut Positioner,
+    ) -> Size;
+}
+
 struct LayoutDemo {
     tree: Rectree,
     world: World,
 }
 
 impl LayoutDemo {
-    fn new(tree: Rectree, world: World) -> Self {
-        Self { tree, world }
+    fn new() -> Self {
+        Self {
+            tree: Rectree::new(),
+            world: World::new(),
+        }
+    }
+
+    fn add_widget<W>(
+        &mut self,
+        parent: Option<NodeId>,
+        color: Color,
+        add_content: impl FnOnce(&mut Self, NodeId) -> W,
+    ) -> NodeId
+    where
+        W: Widget + 'static,
+    {
+        let mut node = RectNode::new();
+        if let Some(parent) = parent {
+            node = node.with_parent(parent);
+        }
+        let id = self.tree.insert(node);
+
+        let w = Box::new(add_content(self, id));
+        self.world.widgets.insert(id, w);
+        self.world.node_colors.insert(id, color);
+
+        id
     }
 
     fn draw_tree(&self, scene: &mut Scene, transform: Affine) {
@@ -261,19 +296,21 @@ impl VelloDemo for LayoutDemo {
             .unwrap()
             .as_secs_f64();
 
-        let mut ctx = LayoutCtx::new(&mut self.tree);
-
-        for (i, (id, area)) in self.world.areas.iter_mut().enumerate()
+        for (i, (id, widget)) in
+            self.world.widgets.iter_mut().enumerate()
         {
-            let time = time + i as f64;
-            let oscillation = (time.cos() + 1.0) * AREA;
+            let widget = widget.as_mut() as &mut dyn Any;
+            if let Some(area) = widget.downcast_mut::<FixedArea>() {
+                let time = time + i as f64;
+                let oscillation = (time.cos() + 1.0) * AREA;
+                area.target_area = AREA + oscillation;
+            }
 
-            area.target_area = AREA + oscillation;
-            ctx.schedule_relayout(*id);
+            self.tree.schedule_relayout(*id);
         }
 
         // Perform layouting.
-        ctx.layout(&self.world);
+        self.tree.layout(&self.world);
 
         self.draw_tree(scene, Affine::IDENTITY);
     }

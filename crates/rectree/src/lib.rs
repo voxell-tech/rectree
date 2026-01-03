@@ -6,9 +6,11 @@ extern crate alloc;
 use core::fmt::{Display, Formatter};
 use core::ops::Deref;
 
+use alloc::collections::btree_set::BTreeSet;
 use alloc::vec;
 use hashbrown::HashSet;
 
+use crate::layout::DepthNode;
 use crate::node::RectNode;
 use crate::sparse_map::{Key, SparseMap};
 
@@ -18,25 +20,6 @@ pub mod layout;
 pub mod mut_detect;
 pub mod node;
 pub mod sparse_map;
-
-#[derive(
-    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord,
-)]
-pub struct NodeId(Key);
-
-impl Deref for NodeId {
-    type Target = Key;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Display for NodeId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        f.write_fmt(format_args!("NodeId({})", self.0))
-    }
-}
 
 /// A hierarchical tree of rectangular layout nodes.
 ///
@@ -55,8 +38,14 @@ pub struct Rectree {
     /// This uses a sparse map to provide stable identifiers while
     /// allowing efficient insertion and removal.
     nodes: SparseMap<RectNode>,
+    /// Nodes scheduled for relayout, ordered by depth.
+    ///
+    /// Deeper nodes are processed first to ensure children are laid
+    /// out before their parents.
+    scheduled_relayout: BTreeSet<DepthNode>,
 }
 
+/// Builders.
 impl Rectree {
     /// Creates an empty [`Rectree`].
     ///
@@ -87,6 +76,9 @@ impl Rectree {
                 self.root_ids.insert(id);
             }
 
+            self.scheduled_relayout
+                .insert(DepthNode::new(node.depth, id));
+
             node
         });
 
@@ -112,10 +104,6 @@ impl Rectree {
         false
     }
 
-    // TODO: RectreeFragment (below).
-    // TODO: Support detach node -> fragment.
-    // TODO: Support attach fragment.
-
     /// Recursively removes a node and all of its descendants.
     ///
     /// This is an internal helper used by [`Self::remove()`].
@@ -131,7 +119,10 @@ impl Rectree {
             self.nodes.remove(&id);
         }
     }
+}
 
+/// Node retrieval.
+impl Rectree {
     /// Returns an immutable reference to a node if it exists.
     pub fn try_get(&self, id: &NodeId) -> Option<&RectNode> {
         self.nodes.get(id)
@@ -175,6 +166,29 @@ impl Rectree {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord,
+)]
+pub struct NodeId(Key);
+
+impl Deref for NodeId {
+    type Target = Key;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Display for NodeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.write_fmt(format_args!("NodeId({})", self.0))
+    }
+}
+
+// TODO: RectreeFragment (below).
+// TODO: Support detach node -> fragment.
+// TODO: Support attach fragment.
+//
 // #[derive(Debug)]
 // pub struct RectreeFragment {
 //     root_ids: NodeId,
