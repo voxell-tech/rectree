@@ -34,8 +34,6 @@ pub struct RectNode {
     /// This is computed during the top-down constraint pass and should
     /// not be mutated directly by user code.
     pub(crate) parent_constraint: Constraint,
-    // /// Constraint of this node to be given to its children.
-    // pub(crate) constraint: Constraint,
     /// World-space translation of this node.
     ///
     /// This is the accumulated translation from the root and is
@@ -50,9 +48,9 @@ pub struct RectNode {
     /// This value is assigned and maintained by [`crate::Rectree`]
     /// and must not be modified externally.
     pub(crate) depth: u32,
-    /// Set to false when this node needs to be reconstrained.
+    /// Set to `false` when this node needs to be reconstrained.
     pub(crate) constrained: bool,
-    /// Set to false when this nodes needs to be rebuilt.
+    /// Set to `false` when this nodes needs to be rebuilt.
     pub(crate) built: bool,
 }
 

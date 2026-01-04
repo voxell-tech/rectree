@@ -1,8 +1,10 @@
+use alloc::collections::btree_set::BTreeSet;
+use alloc::vec;
 use alloc::vec::Vec;
-use alloc::{collections::btree_set::BTreeSet, vec};
 use kurbo::{Size, Vec2};
 
-use crate::{NodeId, Rectree, node::RectNode};
+use crate::node::RectNode;
+use crate::{NodeId, Rectree};
 
 /// Layout execution.
 impl Rectree {
@@ -177,6 +179,10 @@ pub trait LayoutSolver {
         parent_constraint
     }
 
+    /// Builds the layout for a node and returns its final size.
+    ///
+    /// Implementations may assign translations to child nodes via
+    /// [`Positioner`]. All translations are relative to their parent.
     fn build(
         &self,
         node: &RectNode,
