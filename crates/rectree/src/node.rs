@@ -31,8 +31,8 @@ pub struct RectNode {
     pub(crate) size: Size,
     /// Constraint imposed by the parent onto this node.
     ///
-    /// This is computed during the top-down constraint pass and should
-    /// not be mutated directly by user code.
+    /// This is computed during the top-down constraint pass via
+    /// [`crate::layout::LayoutSolver::constraint()`].
     pub(crate) parent_constraint: Constraint,
     /// World-space translation of this node.
     ///
