@@ -35,7 +35,7 @@ impl Rectree {
         let scheduled_relayout =
             core::mem::take(&mut self.scheduled_relayout);
         let mut child_stack = Vec::<NodeId>::new();
-        let mut build_stack = BTreeSet::<NodeId>::new();
+        let mut build_stack = BTreeSet::<DepthNode>::new();
 
         for DepthNode { id, .. } in scheduled_relayout.iter() {
             let Some(node) = self.try_get_mut(id) else {
@@ -74,7 +74,7 @@ impl Rectree {
 
                 let node = self.get_mut(&id);
                 node.built = false;
-                build_stack.insert(id);
+                build_stack.insert(DepthNode::new(node.depth, id));
             }
         }
 
@@ -83,7 +83,8 @@ impl Rectree {
             scheduled_relayout;
 
         // Propagate size from child to parent.
-        while let Some(id) = build_stack.pop_last() {
+        while let Some(DepthNode { id, .. }) = build_stack.pop_last()
+        {
             let solver = world.get_solver(&id);
             let size =
                 solver.build(self.get(&id), self, &mut positioner);
@@ -100,7 +101,10 @@ impl Rectree {
                         // be rebuilt.
                         if parent_node.built {
                             parent_node.built = false;
-                            build_stack.insert(parent);
+                            build_stack.insert(DepthNode::new(
+                                parent_node.depth,
+                                parent,
+                            ));
                             scheduled_translation_propagation.insert(
                                 DepthNode::new(
                                     parent_node.depth,
