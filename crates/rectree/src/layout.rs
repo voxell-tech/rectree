@@ -81,8 +81,7 @@ impl Rectree {
         }
 
         let mut positioner = Positioner::default();
-        let mut scheduled_translation_propagation =
-            scheduled_relayout;
+        let mut translation_stack = scheduled_relayout;
 
         // Propagate size from child to parent.
         while let Some(DepthNode { id, .. }) = build_stack.pop_last()
@@ -103,16 +102,13 @@ impl Rectree {
                         // be rebuilt.
                         if parent_node.built {
                             parent_node.built = false;
-                            build_stack.insert(DepthNode::new(
+
+                            let depth_node = DepthNode::new(
                                 parent_node.depth,
                                 parent,
-                            ));
-                            scheduled_translation_propagation.insert(
-                                DepthNode::new(
-                                    parent_node.depth,
-                                    parent,
-                                ),
                             );
+                            translation_stack.insert(depth_node);
+                            build_stack.insert(depth_node);
                         }
                     }
                     node.size = size;
@@ -120,10 +116,8 @@ impl Rectree {
             });
         }
 
-        // Propagate translations.
-        for DepthNode { id, .. } in
-            scheduled_translation_propagation.into_iter()
-        {
+        // Propagate translations from parent to child.
+        for DepthNode { id, .. } in translation_stack.into_iter() {
             let node = self.get(&id);
 
             // Translation could have already been resolved by a
