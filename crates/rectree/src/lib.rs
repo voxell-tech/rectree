@@ -17,7 +17,6 @@ use crate::sparse_map::{Key, SparseMap};
 pub use kurbo;
 
 pub mod layout;
-pub mod mut_detect;
 pub mod node;
 pub mod sparse_map;
 
@@ -94,7 +93,11 @@ impl Rectree {
             if let Some(parent) =
                 node.parent.and_then(|id| self.nodes.get_mut(&id))
             {
+                // Bookeeping.
                 parent.children.remove(id);
+            } else {
+                // No parent, meaning that it's a root id.
+                self.root_ids.remove(id);
             }
 
             self.remove_recursive(id);
@@ -129,10 +132,7 @@ impl Rectree {
     }
 
     /// Returns a mutable reference to a node if it exists.
-    pub fn try_get_mut(
-        &mut self,
-        id: &NodeId,
-    ) -> Option<&mut RectNode> {
+    fn try_get_mut(&mut self, id: &NodeId) -> Option<&mut RectNode> {
         self.nodes.get_mut(id)
     }
 
@@ -152,7 +152,7 @@ impl Rectree {
     /// # Panics
     ///
     /// Panics if the given [`NodeId`] does not exist in the tree.
-    pub fn get_mut(&mut self, id: &NodeId) -> &mut RectNode {
+    fn get_mut(&mut self, id: &NodeId) -> &mut RectNode {
         self.try_get_mut(id).unwrap_or_else(|| {
             panic!("{id} does not exists in tree.")
         })

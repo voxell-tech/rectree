@@ -3,7 +3,6 @@ use kurbo::{Rect, Size, Vec2};
 
 use crate::NodeId;
 use crate::layout::Constraint;
-use crate::mut_detect::MutDetect;
 
 /// An axis-aligned rectangle in the layout tree.
 ///
@@ -22,32 +21,22 @@ use crate::mut_detect::MutDetect;
 /// ```
 #[derive(Default, Debug, Clone)]
 pub struct RectNode {
-    /// Local translation, relative to the parent.
-    pub(crate) translation: MutDetect<Vec2>,
-    /// Size of the node.
-    ///
-    /// This is the resolved size after
-    /// [`crate::layout::LayoutSolver::build()`].
+    /// See [`Self::translation()`].
+    pub(crate) translation: Vec2,
+    /// See [`Self::size()`].
     pub(crate) size: Size,
-    /// Constraint imposed by the parent onto this node.
-    ///
-    /// This is computed during the top-down constraint pass via
-    /// [`crate::layout::LayoutSolver::constraint()`].
+    /// See [`Self::parent_constraint()`].
     pub(crate) parent_constraint: Constraint,
-    /// World-space translation of this node.
-    ///
-    /// This is the accumulated translation from the root and is
-    /// computed during transform propagation.
+    /// See [`Self::world_translation()`].
     pub(crate) world_translation: Vec2,
-    /// Parent node in the hierarchy, if any.
+    /// See [`Self::parent()`].
     pub(crate) parent: Option<NodeId>,
-    /// Child nodes of this node.
+    /// See [`Self::children()`].
     pub(crate) children: HashSet<NodeId>,
-    /// How deep in the hierarchy is this node (0 for root nodes).
-    ///
-    /// This value is assigned and maintained by [`crate::Rectree`]
-    /// and must not be modified externally.
+    /// See [`Self::depth()`].
     pub(crate) depth: u32,
+    /// Set to `false` when this node needs to be repositioned.
+    pub(crate) positioned: bool,
     /// Set to `false` when this node needs to be reconstrained.
     pub(crate) constrained: bool,
     /// Set to `false` when this nodes needs to be rebuilt.
@@ -86,7 +75,7 @@ impl RectNode {
         mut self,
         translation: impl Into<Vec2>,
     ) -> Self {
-        *self.translation = translation.into();
+        self.translation = translation.into();
         self
     }
 
@@ -103,34 +92,55 @@ impl RectNode {
 
 /// Getters.
 impl RectNode {
+    /// Local translation, relative to the parent.
     pub fn translation(&self) -> Vec2 {
-        *self.translation
+        self.translation
     }
 
+    /// Size of the node.
+    ///
+    /// This is the resolved size after
+    /// [`crate::layout::LayoutSolver::build()`].
     pub fn size(&self) -> Size {
         self.size
     }
 
+    /// Constraint imposed by the parent onto this node.
+    ///
+    /// This is computed during the top-down constraint pass via
+    /// [`crate::layout::LayoutSolver::constraint()`].
     pub fn parent_constraint(&self) -> Constraint {
         self.parent_constraint
     }
 
+    /// World-space translation of this node.
+    ///
+    /// This is the accumulated translation from the root and is
+    /// computed during transform propagation.
     pub fn world_translation(&self) -> Vec2 {
         self.world_translation
     }
 
+    /// Parent node in the hierarchy, if any.
     pub fn parent(&self) -> Option<NodeId> {
         self.parent
     }
 
+    /// Child nodes of this node.
     pub fn children(&self) -> &HashSet<NodeId> {
         &self.children
     }
 
+    /// How deep in the hierarchy is this node (0 for root nodes).
+    ///
+    /// This value is assigned and maintained by [`crate::Rectree`]
+    /// and must not be modified externally.
     pub fn depth(&self) -> u32 {
         self.depth
     }
 
+    /// Compute the world space [`Rect`] from
+    /// [`Self::world_translation`] and [`Self::size`].
     pub fn world_rect(&self) -> Rect {
         Rect::new(
             self.world_translation.x,
@@ -140,6 +150,7 @@ impl RectNode {
         )
     }
 
+    /// Returns `true` if [`Self::parent`] is `None`.
     pub fn is_root(&self) -> bool {
         self.parent.is_none()
     }

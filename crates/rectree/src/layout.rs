@@ -19,6 +19,7 @@ impl Rectree {
     /// if the node does not exist or was already scheduled.
     pub fn schedule_relayout(&mut self, id: NodeId) -> bool {
         if let Some(node) = self.nodes.get_mut(&id) {
+            node.positioned = false;
             node.constrained = false;
             node.built = false;
             return self
@@ -101,6 +102,7 @@ impl Rectree {
                         // Insert only if parent node is not already set to
                         // be rebuilt.
                         if parent_node.built {
+                            parent_node.positioned = false;
                             parent_node.built = false;
 
                             let depth_node = DepthNode::new(
@@ -122,7 +124,7 @@ impl Rectree {
 
             // Translation could have already been resolved by a
             // previous iteration.
-            if !node.translation.mutated() {
+            if node.positioned {
                 continue;
             }
 
@@ -143,11 +145,11 @@ impl Rectree {
             let node = self.get_mut(&id);
 
             node.world_translation =
-                *node.translation + translation_stack[index];
+                node.translation + translation_stack[index];
 
-            // Reset the mutation state once the world translation
-            // is being updated.
-            node.translation.reset_mutation();
+            // This node is now positioned since the world
+            // translation has been updated.
+            node.positioned = true;
 
             let new_index = translation_stack.len();
             translation_stack.push(node.world_translation);
@@ -159,13 +161,28 @@ impl Rectree {
     }
 }
 
+/// Provides access to layout solvers associated with nodes.
+///
+/// Acts as the bridge between [`Rectree`] and layout logic, allowing
+/// each node to be resolved by an external [`LayoutSolver`].
 pub trait LayoutWorld {
+    /// Returns the [`LayoutSolver`] responsible for computing layout
+    /// for the given [`NodeId`].
     fn get_solver(&self, id: &NodeId) -> &dyn LayoutSolver;
 }
 
+/// Defines how a node participates in layout resolution.
+///
+/// A `LayoutSolver` is responsible for:
+/// - Propagating constraints from parent to children (top-down).
+/// - Computing the node’s final size (bottom-up).
+/// - Positioning child nodes relative to the parent.
 pub trait LayoutSolver {
-    /// Constraint of the widget, inherits the parent's constraint by
-    /// default.
+    /// Computes the constraint to be applied to this node.
+    ///
+    /// By default, the parent’s constraint is forwarded unchanged.
+    /// Implementations may tighten, relax, or otherwise transform the
+    /// constraint before it is used during layout.
     fn constraint(
         &self,
         parent_constraint: Constraint,
@@ -173,10 +190,18 @@ pub trait LayoutSolver {
         parent_constraint
     }
 
-    /// Builds the layout for a node and returns its final size.
+    /// Builds the layout for a node and returns its resolved size.
     ///
-    /// Implementations may assign translations to child nodes via
-    /// [`Positioner`]. All translations are relative to their parent.
+    /// This method is called during the layout pass after constraints
+    /// have been propagated.
+    ///
+    /// Implementations may:
+    /// - Inspect the node’s state and children via [`Rectree`].
+    /// - Assign local translations to child nodes via
+    ///   [`Positioner`].
+    ///
+    /// All translations written through [`Positioner`] are relative
+    /// to the parent node.
     fn build(
         &self,
         node: &RectNode,
@@ -185,19 +210,31 @@ pub trait LayoutSolver {
     ) -> Size;
 }
 
+/// Collects child translations produced during layout construction.
+///
+/// See [`LayoutSolver::build()`].
 #[derive(Default)]
 pub struct Positioner {
     new_translations: Vec<(NodeId, Vec2)>,
 }
 
 impl Positioner {
+    /// Sets the local translation for a node.
+    ///
+    /// The translation is recorded and applied later as part of the
+    /// layout commit phase. If multiple translations are set for the
+    /// same node, the last one wins.
     pub fn set(&mut self, id: NodeId, translation: Vec2) {
         self.new_translations.push((id, translation));
     }
 
-    pub fn apply(&mut self, tree: &mut Rectree) {
+    /// Applies all recorded translations to the [`Rectree`].
+    ///
+    /// This is called internally after layout resolution to commit
+    /// the results of [`LayoutSolver::build()`].
+    fn apply(&mut self, tree: &mut Rectree) {
         for (id, translation) in self.new_translations.drain(..) {
-            *tree.get_mut(&id).translation = translation;
+            tree.get_mut(&id).translation = translation;
         }
     }
 }
@@ -231,7 +268,7 @@ pub struct Constraint {
 }
 
 impl Constraint {
-    /// Creates a constraint with both width and height fixed.
+    /// Create a constraint with both width and height fixed.
     pub fn fixed(width: f64, height: f64) -> Self {
         Self {
             width: Some(width),
@@ -239,7 +276,7 @@ impl Constraint {
         }
     }
 
-    /// Creates a constraint with a fixed width and flexible height.
+    /// Create a constraint with a fixed width and flexible height.
     pub fn fixed_width(width: f64) -> Self {
         Self {
             width: Some(width),
@@ -247,7 +284,7 @@ impl Constraint {
         }
     }
 
-    /// Creates a constraint with a fixed height and flexible width.
+    /// Create a constraint with a fixed height and flexible width.
     pub fn fixed_height(height: f64) -> Self {
         Self {
             width: None,
@@ -255,7 +292,7 @@ impl Constraint {
         }
     }
 
-    /// Creates a fully flexible constraint with no fixed dimensions.
+    /// Create a fully flexible constraint with no fixed dimensions.
     pub fn flexible() -> Self {
         Self::default()
     }
