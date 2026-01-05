@@ -19,6 +19,7 @@ impl Rectree {
     /// if the node does not exist or was already scheduled.
     pub fn schedule_relayout(&mut self, id: NodeId) -> bool {
         if let Some(node) = self.nodes.get_mut(&id) {
+            node.positioned = false;
             node.constrained = false;
             node.built = false;
             return self
@@ -101,6 +102,7 @@ impl Rectree {
                         // Insert only if parent node is not already set to
                         // be rebuilt.
                         if parent_node.built {
+                            parent_node.positioned = false;
                             parent_node.built = false;
 
                             let depth_node = DepthNode::new(
@@ -122,7 +124,7 @@ impl Rectree {
 
             // Translation could have already been resolved by a
             // previous iteration.
-            if !node.translation.mutated() {
+            if node.positioned {
                 continue;
             }
 
@@ -143,11 +145,11 @@ impl Rectree {
             let node = self.get_mut(&id);
 
             node.world_translation =
-                *node.translation + translation_stack[index];
+                node.translation + translation_stack[index];
 
-            // Reset the mutation state once the world translation
-            // is being updated.
-            node.translation.reset_mutation();
+            // This node is now positioned since the world
+            // translation has been updated.
+            node.positioned = true;
 
             let new_index = translation_stack.len();
             translation_stack.push(node.world_translation);
@@ -197,7 +199,7 @@ impl Positioner {
 
     pub fn apply(&mut self, tree: &mut Rectree) {
         for (id, translation) in self.new_translations.drain(..) {
-            *tree.get_mut(&id).translation = translation;
+            tree.get_mut(&id).translation = translation;
         }
     }
 }
