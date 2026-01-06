@@ -9,16 +9,15 @@ use core::ops::Deref;
 use alloc::collections::btree_set::BTreeSet;
 use alloc::vec;
 use hashbrown::HashSet;
+use sparse_map::{Key, SparseMap};
 
 use crate::layout::DepthNode;
 use crate::node::RectNode;
-use crate::sparse_map::{Key, SparseMap};
 
 pub use kurbo;
 
 pub mod layout;
 pub mod node;
-pub mod sparse_map;
 
 /// A hierarchical tree of rectangular layout nodes.
 ///
