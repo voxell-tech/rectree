@@ -19,9 +19,7 @@ impl Rectree {
     /// if the node does not exist or was already scheduled.
     pub fn schedule_relayout(&mut self, id: NodeId) -> bool {
         if let Some(node) = self.nodes.get_mut(&id) {
-            node.positioned = false;
-            node.constrained = false;
-            node.built = false;
+            node.state.reset();
             return self
                 .scheduled_relayout
                 .insert(DepthNode::new(node.depth, id));
@@ -46,7 +44,7 @@ impl Rectree {
             };
             // Check constrain flag, if it has already been
             // constrained, skip the entire process.
-            if node.constrained {
+            if node.state.constrained() {
                 continue;
             }
 
@@ -60,7 +58,7 @@ impl Rectree {
                     solver.constraint(node.parent_constraint);
 
                 self.nodes.scope(&id, |nodes, node| {
-                    node.constrained = true;
+                    node.state.has_recontrained();
 
                     for child in node.children() {
                         let child_node =
@@ -76,7 +74,7 @@ impl Rectree {
                 });
 
                 let node = self.get_mut(&id);
-                node.built = false;
+                node.state.needs_rebuild();
                 build_stack.insert(DepthNode::new(node.depth, id));
             }
         }
@@ -93,7 +91,7 @@ impl Rectree {
             positioner.apply(self);
 
             self.nodes.scope(&id, |nodes, node| {
-                node.built = true;
+                node.state.has_rebuilt();
                 // Parent needs to be rebuilt if size changes.
                 if node.size != size {
                     if let Some(parent) = node.parent {
@@ -101,9 +99,9 @@ impl Rectree {
                             Self::get_node_mut(nodes, &parent);
                         // Insert only if parent node is not already set to
                         // be rebuilt.
-                        if parent_node.built {
-                            parent_node.positioned = false;
-                            parent_node.built = false;
+                        if parent_node.state.built() {
+                            parent_node.state.needs_reposition();
+                            parent_node.state.needs_rebuild();
 
                             let depth_node = DepthNode::new(
                                 parent_node.depth,
@@ -124,7 +122,7 @@ impl Rectree {
 
             // Translation could have already been resolved by a
             // previous iteration.
-            if node.positioned {
+            if node.state.positioned() {
                 continue;
             }
 
@@ -149,7 +147,7 @@ impl Rectree {
 
             // This node is now positioned since the world
             // translation has been updated.
-            node.positioned = true;
+            node.state.has_repositioned();
 
             let new_index = translation_stack.len();
             translation_stack.push(node.world_translation);

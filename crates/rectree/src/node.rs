@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use hashbrown::HashSet;
 use kurbo::{Rect, Size, Vec2};
 
@@ -35,12 +36,8 @@ pub struct RectNode {
     pub(crate) children: HashSet<NodeId>,
     /// See [`Self::depth()`].
     pub(crate) depth: u32,
-    /// Set to `false` when this node needs to be repositioned.
-    pub(crate) positioned: bool,
-    /// Set to `false` when this node needs to be reconstrained.
-    pub(crate) constrained: bool,
-    /// Set to `false` when this nodes needs to be rebuilt.
-    pub(crate) built: bool,
+    /// The state of the current node.
+    pub(crate) state: NodeState,
 }
 
 /// Builders.
@@ -153,5 +150,65 @@ impl RectNode {
     /// Returns `true` if [`Self::parent`] is `None`.
     pub fn is_root(&self) -> bool {
         self.parent.is_none()
+    }
+}
+
+bitflags! {
+    #[derive(Default, Debug, Clone, Copy)]
+    pub struct NodeState: u8 {
+        const POSITIONED = 1;
+        const CONSTRAINED = 1 << 1;
+        const BUILT = 1 << 2;
+    }
+}
+
+impl NodeState {
+    /// Returns the [`Self::POSITIONED`] flag value.
+    pub fn positioned(&self) -> bool {
+        self.intersects(Self::POSITIONED)
+    }
+
+    /// Returns the [`Self::CONSTRAINED`] flag value.
+    pub fn constrained(&self) -> bool {
+        self.intersects(Self::CONSTRAINED)
+    }
+
+    /// Returns the [`Self::BUILT`] flag value.
+    pub fn built(&self) -> bool {
+        self.intersects(Self::BUILT)
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self::empty();
+    }
+
+    /// Set [`Self::POSITIONED`] flag to `false`.
+    pub fn needs_reposition(&mut self) {
+        self.remove(Self::POSITIONED);
+    }
+
+    /// Set [`Self::CONSTRAINED`] flag to `false`.
+    pub fn needs_reconstrain(&mut self) {
+        self.remove(Self::CONSTRAINED);
+    }
+
+    /// Set [`Self::BUILT`] flag to `false`.
+    pub fn needs_rebuild(&mut self) {
+        self.remove(Self::BUILT);
+    }
+
+    /// Set [`Self::POSITIONED`] flag to `true`.
+    pub fn has_repositioned(&mut self) {
+        self.insert(Self::POSITIONED);
+    }
+
+    /// Set [`Self::CONSTRAINED`] flag to `true`.
+    pub fn has_recontrained(&mut self) {
+        self.insert(Self::CONSTRAINED);
+    }
+
+    /// Set [`Self::BUILT`] flag to `true`.
+    pub fn has_rebuilt(&mut self) {
+        self.insert(Self::BUILT);
     }
 }
