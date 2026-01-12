@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "Representing user interfaces using a rectangle tree."
+keywords = ["rectangle", "layout", "user-interface", "hierarchy", "box"]
+categories = ["gui", "data-structures", "no-std"]
+readme = "README.md"
 
 [dependencies]
 sparse_map.workspace = true

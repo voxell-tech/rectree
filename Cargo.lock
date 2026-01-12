@@ -1639,9 +1639,9 @@ dependencies = [
 
 [[package]]
 name = "sparse_map"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "411e21c137c7e1bdf60a6429fa1b440fdcb75f1b89c200c2b4fe8432d5dd038a"
+checksum = "839b579eddeb504ed4349054948eb9f02245488eddab69672e6d8a91a64f448a"
 
 [[package]]
 name = "spirv"
