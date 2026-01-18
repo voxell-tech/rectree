@@ -2,7 +2,9 @@ use std::any::Any;
 
 use hashbrown::HashMap;
 use kurbo::{Affine, Circle, Rect, Size, Stroke, Vec2};
-use rectree::layout::{LayoutSolver, LayoutWorld, Positioner};
+use rectree::layout::{
+    Constraint, LayoutSolver, LayoutWorld, Positioner,
+};
 use rectree::node::RectNode;
 use rectree::{NodeId, Rectree};
 use vello::Scene;
@@ -15,34 +17,184 @@ const AREA: f64 = 2500.0;
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let mut demo = LayoutDemo::new();
+    // Create a horizontal stack container.
+    demo.add_widget(None, Color::TRANSPARENT, |demo, root_id| {
+        Horizontal {
+            spacing: 20.0,
+            children: vec![
+                demo.add_widget(
+                    Some(root_id),
+                    Color::from_rgb8(200, 200, 10),
+                    |demo, id| VerticalCenteredList {
+                        padding: 20.0,
+                        children: (0..5)
+                            .map(|_i| {
+                                let area = FixedArea {
+                                    use_width: false,
+                                    target_area: AREA,
+                                };
 
-    demo.add_widget(
-        None,
-        Color::from_rgb8(200, 200, 10),
-        |demo, id| VerticalCenteredList {
-            padding: 20.0,
-            children: (0..5)
-                .map(|_i| {
-                    let area = FixedArea {
-                        use_width: false,
-                        target_area: AREA,
-                    };
+                                demo.add_widget(
+                                    Some(id),
+                                    Color::from_rgb8(10, 200, 200),
+                                    |_, _| area,
+                                )
+                            })
+                            .collect(),
+                    },
+                ),
+                demo.add_widget(
+                    Some(root_id),
+                    Color::TRANSPARENT,
+                    // Create a vertical stack of fixed height rectangles
+                    |demo, id| Vertical {
+                        spacing: 20.0,
+                        children: vec![
+                            demo.add_widget(
+                                Some(id),
+                                Color::from_rgb8(255, 100, 100),
+                                |_, _| FixedHeightRect {
+                                    height: 100.0,
+                                },
+                            ),
+                            demo.add_widget(
+                                Some(id),
+                                Color::from_rgb8(100, 255, 100),
+                                |_, _| FixedHeightRect {
+                                    height: 200.0,
+                                },
+                            ),
+                            demo.add_widget(
+                                Some(id),
+                                Color::from_rgb8(100, 100, 255),
+                                |_, _| FixedHeightRect {
+                                    height: 130.0,
+                                },
+                            ),
+                        ],
+                    },
+                ),
+            ],
+        }
+    });
 
-                    demo.add_widget(
-                        Some(id),
-                        Color::from_rgb8(10, 200, 200),
-                        |_, _| area,
-                    )
-                })
-                .collect(),
-        },
-    );
     // Initial layout.
     demo.tree.layout(&demo.world);
 
     let mut app = VelloWinitApp::new(demo);
 
     event_loop.run_app(&mut app).unwrap();
+}
+
+#[derive(Debug, Clone)]
+// Horizontal layout widget
+struct Horizontal {
+    spacing: f64,
+    children: Vec<NodeId>,
+}
+// Horizontal logic
+// Enforce the parent's height on children
+// Relax the width constraint so children can stack infinitely
+impl LayoutSolver for Horizontal {
+    fn constraint(
+        &self,
+        parent_constraint: Constraint,
+    ) -> Constraint {
+        Constraint {
+            width: None,
+            height: parent_constraint.height,
+        }
+    }
+
+    fn build(
+        &self,
+        node: &RectNode,
+        tree: &Rectree,
+        positioner: &mut Positioner,
+    ) -> Size {
+        let height = node.parent_constraint().height.unwrap_or(0.0);
+
+        let mut x_cursor = 0.0;
+
+        for id in self.children.iter() {
+            let child_node = tree.get(id);
+            let child_size = child_node.size();
+
+            positioner.set(*id, Vec2::new(x_cursor, 0.0));
+
+            x_cursor += child_size.width + self.spacing;
+        }
+        // Remove the last added spacing
+        if !self.children.is_empty() {
+            x_cursor -= self.spacing;
+        }
+
+        Size::new(x_cursor, height)
+    }
+}
+
+// Vertical layout widget
+#[derive(Debug, Clone)]
+struct Vertical {
+    spacing: f64,
+    children: Vec<NodeId>,
+}
+// Vertical logic
+// Enforce the parent's width on children
+// Relax the height constraint so children can stack infinitely
+impl LayoutSolver for Vertical {
+    fn constraint(
+        &self,
+        parent_constraint: Constraint,
+    ) -> Constraint {
+        Constraint {
+            width: parent_constraint.width,
+            height: None,
+        }
+    }
+
+    fn build(
+        &self,
+        node: &RectNode,
+        tree: &Rectree,
+        positioner: &mut Positioner,
+    ) -> Size {
+        let width = node.parent_constraint().width.unwrap_or(200.0);
+
+        let mut y_cursor = 0.0;
+
+        for id in self.children.iter() {
+            let child_node = tree.get(id);
+            let child_size = child_node.size();
+
+            positioner.set(*id, Vec2::new(0.0, y_cursor));
+
+            y_cursor += child_size.height + self.spacing;
+        }
+        // Remove the last added spacing
+        if !self.children.is_empty() {
+            y_cursor -= self.spacing;
+        }
+
+        Size::new(width, y_cursor)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FixedHeightRect {
+    height: f64,
+}
+
+impl LayoutSolver for FixedHeightRect {
+    fn build(
+        &self,
+        node: &RectNode,
+        _: &Rectree,
+        _: &mut Positioner,
+    ) -> Size {
+        let width = node.parent_constraint().width.unwrap_or(200.0);
+        Size::new(width, self.height)
+    }
 }
 
 struct World {
@@ -208,32 +360,37 @@ impl LayoutDemo {
                     .cloned()
                     .unwrap_or(Color::WHITE);
 
-                scene.fill(
-                    vello::peniko::Fill::NonZero,
-                    transform,
-                    color,
-                    None,
-                    &world_rect,
-                );
+                if color.components[3] > 0.0 {
+                    scene.fill(
+                        vello::peniko::Fill::NonZero,
+                        transform,
+                        color,
+                        None,
+                        &world_rect,
+                    );
 
-                scene.stroke(
-                    &Stroke::new(2.0),
-                    transform,
-                    Color::from_rgb8(255, 255, 255),
-                    None,
-                    &world_rect,
-                );
+                    scene.stroke(
+                        &Stroke::new(2.0),
+                        transform,
+                        Color::from_rgb8(255, 255, 255),
+                        None,
+                        &world_rect,
+                    );
+                }
 
                 // Origin markers.
-                let origin = Circle::new(world_rect.origin(), 5.0);
+                if color.components[3] > 0.0 {
+                    let origin =
+                        Circle::new(world_rect.origin(), 5.0);
 
-                scene.fill(
-                    vello::peniko::Fill::NonZero,
-                    transform,
-                    Color::from_rgb8(255, 50, 50),
-                    None,
-                    &origin,
-                );
+                    scene.fill(
+                        vello::peniko::Fill::NonZero,
+                        transform,
+                        Color::from_rgb8(255, 50, 50),
+                        None,
+                        &origin,
+                    );
+                }
 
                 // Traverse to children.
                 for child_id in node.children().iter() {
