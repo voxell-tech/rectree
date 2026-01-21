@@ -47,31 +47,48 @@ fn main() {
                     Some(root_id),
                     Color::TRANSPARENT,
                     // Create a vertical stack of fixed height rectangles
-                    |demo, id| Vertical {
-                        spacing: 20.0,
-                        children: vec![
-                            demo.add_widget(
-                                Some(id),
-                                Color::from_rgb8(255, 100, 100),
-                                |_, _| FixedHeightRect {
-                                    height: 100.0,
-                                },
-                            ),
-                            demo.add_widget(
-                                Some(id),
-                                Color::from_rgb8(100, 255, 100),
-                                |_, _| FixedHeightRect {
-                                    height: 200.0,
-                                },
-                            ),
-                            demo.add_widget(
-                                Some(id),
-                                Color::from_rgb8(100, 100, 255),
-                                |_, _| FixedHeightRect {
-                                    height: 130.0,
-                                },
-                            ),
-                        ],
+                    |demo, id| {
+                        let child = demo.add_widget(
+                            Some(id),
+                            Color::TRANSPARENT,
+                            |demo, id| Vertical {
+                                spacing: 20.0,
+                                children: vec![
+                                    demo.add_widget(
+                                        Some(id),
+                                        Color::from_rgb8(
+                                            255, 100, 100,
+                                        ),
+                                        |_, _| FixedHeightRect {
+                                            height: 100.0,
+                                        },
+                                    ),
+                                    demo.add_widget(
+                                        Some(id),
+                                        Color::from_rgb8(
+                                            100, 255, 100,
+                                        ),
+                                        |_, _| FixedHeightRect {
+                                            height: 200.0,
+                                        },
+                                    ),
+                                    demo.add_widget(
+                                        Some(id),
+                                        Color::from_rgb8(
+                                            100, 100, 255,
+                                        ),
+                                        |_, _| FixedHeightRect {
+                                            height: 130.0,
+                                        },
+                                    ),
+                                ],
+                            },
+                        );
+                        // Wrap the vertical stack in a padding container
+                        Padding {
+                            padding: 50.0,
+                            child,
+                        }
                     },
                 ),
             ],
@@ -84,6 +101,55 @@ fn main() {
     let mut app = VelloWinitApp::new(demo);
 
     event_loop.run_app(&mut app).unwrap();
+}
+
+/// A container widget that applies a fixed amount of padding around its single child.
+/// This acts as a frame that consuming space from the parent before delegating to the child.
+#[derive(Debug, Clone)]
+struct Padding {
+    /// The uniform padding amount applied to all four sides (left, top, right, bottom).
+    padding: f64,
+    /// The unique identifier of the child node wrapped by this padding.
+    child: NodeId,
+}
+
+impl LayoutSolver for Padding {
+    fn constraint(
+        &self,
+        parent_constraint: Constraint,
+    ) -> Constraint {
+        Constraint {
+            width: parent_constraint
+                .width
+                .map(|w| (w - self.padding * 2.0).max(0.0)),
+            height: parent_constraint
+                .height
+                .map(|h| (h - self.padding * 2.0).max(0.0)),
+        }
+    }
+    /// Determines the final size and position of the padding widget and its child.
+    ///
+    /// Retrieves the child's final calculated size.
+    /// Offsets the child's position by the padding amount.
+    /// Returns the total size of this widget,
+    /// which includes the child's size plus the padding on all sides.
+    fn build(
+        &self,
+        _node: &RectNode,
+        tree: &Rectree,
+        positioner: &mut Positioner,
+    ) -> Size {
+        let child_node = tree.get(&self.child);
+        let child_size = child_node.size();
+
+        positioner
+            .set(self.child, Vec2::new(self.padding, self.padding));
+
+        Size::new(
+            child_size.width + self.padding * 2.0,
+            child_size.height + self.padding * 2.0,
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
