@@ -13,85 +13,100 @@ use vello_winit_examples::{VelloDemo, VelloWinitApp};
 use winit::event_loop::EventLoop;
 
 const AREA: f64 = 2500.0;
+const WINDOW_WIDTH: f64 = 800.0;
+const WINDOW_HEIGHT: f64 = 600.0;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let mut demo = LayoutDemo::new();
-    // Create a horizontal stack container.
-    demo.add_widget(None, Color::TRANSPARENT, |demo, root_id| {
-        Horizontal {
-            spacing: 20.0,
-            children: vec![
-                demo.add_widget(
-                    Some(root_id),
-                    Color::from_rgb8(200, 200, 10),
-                    |demo, id| VerticalCenteredList {
-                        padding: 20.0,
-                        children: (0..5)
-                            .map(|_i| {
-                                let area = FixedArea {
-                                    use_width: false,
-                                    target_area: AREA,
-                                };
+    // Root widget that aligns its content to the center of the window.
+    demo.add_widget(None, Color::TRANSPARENT, |demo, align_root| {
+        // Create a horizontal stack container.
+        let content = demo.add_widget(
+            Some(align_root),
+            Color::TRANSPARENT,
+            |demo, root_id| Horizontal {
+                spacing: 20.0,
+                children: vec![
+                    demo.add_widget(
+                        Some(root_id),
+                        Color::from_rgb8(200, 200, 10),
+                        |demo, id| VerticalCenteredList {
+                            padding: 20.0,
+                            children: (0..5)
+                                .map(|_i| {
+                                    let area = FixedArea {
+                                        use_width: false,
+                                        target_area: AREA,
+                                    };
 
-                                demo.add_widget(
-                                    Some(id),
-                                    Color::from_rgb8(10, 200, 200),
-                                    |_, _| area,
-                                )
-                            })
-                            .collect(),
-                    },
-                ),
-                demo.add_widget(
-                    Some(root_id),
-                    Color::TRANSPARENT,
-                    // Create a vertical stack of fixed height rectangles
-                    |demo, id| {
-                        let child = demo.add_widget(
-                            Some(id),
-                            Color::TRANSPARENT,
-                            |demo, id| Vertical {
-                                spacing: 20.0,
-                                children: vec![
                                     demo.add_widget(
                                         Some(id),
                                         Color::from_rgb8(
-                                            255, 100, 100,
+                                            10, 200, 200,
                                         ),
-                                        |_, _| FixedHeightRect {
-                                            height: 100.0,
-                                        },
-                                    ),
-                                    demo.add_widget(
-                                        Some(id),
-                                        Color::from_rgb8(
-                                            100, 255, 100,
+                                        |_, _| area,
+                                    )
+                                })
+                                .collect(),
+                        },
+                    ),
+                    demo.add_widget(
+                        Some(root_id),
+                        Color::TRANSPARENT,
+                        // Create a vertical stack of fixed height rectangles
+                        |demo, id| {
+                            let child = demo.add_widget(
+                                Some(id),
+                                Color::TRANSPARENT,
+                                |demo, id| Vertical {
+                                    spacing: 20.0,
+                                    children: vec![
+                                        demo.add_widget(
+                                            Some(id),
+                                            Color::from_rgb8(
+                                                255, 100, 100,
+                                            ),
+                                            |_, _| FixedHeightRect {
+                                                height: 100.0,
+                                            },
                                         ),
-                                        |_, _| FixedHeightRect {
-                                            height: 200.0,
-                                        },
-                                    ),
-                                    demo.add_widget(
-                                        Some(id),
-                                        Color::from_rgb8(
-                                            100, 100, 255,
+                                        demo.add_widget(
+                                            Some(id),
+                                            Color::from_rgb8(
+                                                100, 255, 100,
+                                            ),
+                                            |_, _| FixedHeightRect {
+                                                height: 200.0,
+                                            },
                                         ),
-                                        |_, _| FixedHeightRect {
-                                            height: 130.0,
-                                        },
-                                    ),
-                                ],
-                            },
-                        );
-                        // Wrap the vertical stack in a padding container
-                        Padding {
-                            padding: 50.0,
-                            child,
-                        }
-                    },
-                ),
-            ],
+                                        demo.add_widget(
+                                            Some(id),
+                                            Color::from_rgb8(
+                                                100, 100, 255,
+                                            ),
+                                            |_, _| FixedHeightRect {
+                                                height: 130.0,
+                                            },
+                                        ),
+                                    ],
+                                },
+                            );
+                            // Wrap the vertical stack in a padding container
+                            Padding {
+                                padding: 50.0,
+                                child,
+                            }
+                        },
+                    ),
+                ],
+            },
+        );
+        // Align the content in the center of the window
+        Align {
+            align_x: 0.5,
+            align_y: 0.5,
+            child: content,
         }
     });
 
@@ -101,6 +116,54 @@ fn main() {
     let mut app = VelloWinitApp::new(demo);
 
     event_loop.run_app(&mut app).unwrap();
+}
+
+/// Aligns a child node within the available space.
+#[derive(Debug, Clone)]
+struct Align {
+    /// Horizontal alignment: 0.0 = Left, 0.5 = Center, 1.0 = Right.
+    align_x: f64,
+    /// Vertical alignment: 0.0 = Top, 0.5 = Center, 1.0 = Bottom.
+    align_y: f64,
+    /// The target node to be aligned.
+    child: NodeId,
+}
+
+impl LayoutSolver for Align {
+    fn constraint(&self, _parent: Constraint) -> Constraint {
+        Constraint {
+            width: None,
+            height: None,
+        }
+    }
+
+    fn build(
+        &self,
+        node: &RectNode,
+        tree: &Rectree,
+        positioner: &mut Positioner,
+    ) -> Size {
+        let child_node = tree.get(&self.child);
+        let child_size = child_node.size();
+
+        let width = child_size.width.max(1.0);
+        let height = child_size.height.max(1.0);
+
+        let container_width =
+            node.parent_constraint().width.unwrap_or(WINDOW_WIDTH);
+        let container_height =
+            node.parent_constraint().height.unwrap_or(WINDOW_HEIGHT);
+
+        let surplus_width = (container_width - width).max(0.0);
+        let surplus_height = (container_height - height).max(0.0);
+
+        let offset_x = surplus_width * self.align_x.clamp(0.0, 1.0);
+        let offset_y = surplus_height * self.align_y.clamp(0.0, 1.0);
+
+        positioner.set(self.child, Vec2::new(offset_x, offset_y));
+
+        Size::new(container_width, container_height)
+    }
 }
 
 /// A container widget that applies a fixed amount of padding around its single child.
@@ -152,8 +215,8 @@ impl LayoutSolver for Padding {
     }
 }
 
-#[derive(Debug, Clone)]
 // Horizontal layout widget
+#[derive(Debug, Clone)]
 struct Horizontal {
     spacing: f64,
     children: Vec<NodeId>,
@@ -472,7 +535,7 @@ impl VelloDemo for LayoutDemo {
         "Layout Showcase"
     }
     fn initial_logical_size(&self) -> (f64, f64) {
-        (800.0, 600.0)
+        (WINDOW_WIDTH, WINDOW_HEIGHT)
     }
 
     fn rebuild_scene(
