@@ -18,6 +18,7 @@ pub use kurbo;
 
 pub mod layout;
 pub mod node;
+pub mod spatree;
 
 /// A hierarchical tree of rectangular layout nodes.
 ///
@@ -218,17 +219,3 @@ impl Display for NodeId {
         f.write_fmt(format_args!("NodeId({})", self.0))
     }
 }
-
-// TODO: RectreeFragment (below).
-// TODO: Support detach node -> fragment.
-// TODO: Support attach fragment.
-//
-// #[derive(Debug)]
-// pub struct RectreeFragment {
-//     root_ids: NodeId,
-//     nodes: SparseMap<RectNode>,
-// }
-//
-// impl RectreeFragment {
-//     pub fn into_tree() -> Rectree {}
-// }
