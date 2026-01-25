@@ -2,7 +2,7 @@ use core::ops::Deref;
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use kurbo::Rect;
+use kurbo::{Point, Rect};
 
 #[derive(Default)]
 pub struct Spatree {
@@ -23,23 +23,26 @@ impl Spatree {
         RectId(index)
     }
 
-    pub fn build(&mut self) {
+    pub fn build(&mut self, point_from_rect: fn(&Rect) -> Point) {
         let bound_size = self.bound.size();
-        let mut rect_codes = self
+        let mut morton_codes = self
             .rects
             .iter()
             .enumerate()
-            .map(|(i, r)| {
-                let center = r.center();
-                let x = center.x / bound_size.width;
-                let y = center.y / bound_size.height;
+            .map(|(index, rect)| {
+                let point = point_from_rect(rect);
+                let x = point.x / bound_size.width;
+                let y = point.y / bound_size.height;
 
                 let code = morton_2d_f64(x, y);
-                (code, i)
+                MortonCode { code, index }
             })
             .collect::<Box<_>>();
 
-        rect_codes.sort_unstable();
+        morton_codes.sort_unstable();
+
+        // Top down hierarchy building for single threaded algorithm.
+        // let split_idx = find_split(morton_codes, first, last)
     }
 }
 
@@ -84,20 +87,13 @@ pub fn morton_2d(x: u16, y: u16) -> u32 {
     expand(x as u32) | (expand(y as u32) << 1)
 }
 
-/// Delta operator measures the common prefix of two morton codes if
-/// `j` is not in the range of the morton code array, delta operator
-/// returns `None`.
-pub const fn delta(i: usize, j: usize, morton_codes: &[u32]) -> u32 {
-    (morton_codes[i] ^ morton_codes[j]).leading_zeros()
-}
-
 pub const fn find_split(
-    morton_codes: &[u32],
+    morton_codes: &[MortonCode],
     first: usize,
     last: usize,
 ) -> usize {
-    let first_code = morton_codes[first];
-    let last_code = morton_codes[last];
+    let first_code = morton_codes[first].code;
+    let last_code = morton_codes[last].code;
     // Handle duplicated morton code separately.
     if first_code == last_code {
         return (first + last) / 2;
@@ -118,7 +114,7 @@ pub const fn find_split(
         let new_split = split + step;
 
         if new_split < last {
-            let split_code = morton_codes[new_split];
+            let split_code = morton_codes[new_split].code;
             let split_prefix =
                 (first_code ^ split_code).leading_zeros();
 
@@ -134,4 +130,23 @@ pub const fn find_split(
     }
 
     split
+}
+
+/// Delta operator measures the common prefix of two morton codes if
+/// `j` is not in the range of the morton code array, delta operator
+/// returns `None`.
+pub const fn delta(
+    i: usize,
+    j: usize,
+    morton_codes: &[MortonCode],
+) -> u32 {
+    (morton_codes[i].code ^ morton_codes[j].code).leading_zeros()
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
+pub struct MortonCode {
+    pub code: u32,
+    pub index: usize,
 }
