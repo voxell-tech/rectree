@@ -53,7 +53,8 @@ fn main() {
                     ),
                     demo.add_widget(
                         Some(root_id),
-                        Color::TRANSPARENT,
+                        // Visualize padding container with white background
+                        Color::WHITE,
                         // Create a vertical stack of fixed height rectangles
                         |demo, id| {
                             let child = demo.add_widget(
@@ -71,13 +72,20 @@ fn main() {
                                                 height: 100.0,
                                             },
                                         ),
+                                        // Margin example using Padding widget
                                         demo.add_widget(
                                             Some(id),
-                                            Color::from_rgb8(
-                                                100, 255, 100,
-                                            ),
-                                            |_, _| FixedHeightRect {
-                                                height: 200.0,
+                                            Color::TRANSPARENT,
+                                            |demo, parent_id| Padding {
+                                                pad_x: 0.0,
+                                                pad_y: 30.0,
+                                                child: demo.add_widget(
+                                                    Some(parent_id),
+                                                    Color::from_rgb8(100, 255, 100),
+                                                    |_, _| FixedHeightRect {
+                                                        height: 200.0,
+                                                    },
+                                                ),
                                             },
                                         ),
                                         demo.add_widget(
@@ -94,7 +102,8 @@ fn main() {
                             );
                             // Wrap the vertical stack in a padding container
                             Padding {
-                                padding: 50.0,
+                                pad_x: 20.0,
+                                pad_y: 20.0,
                                 child,
                             }
                         },
@@ -170,8 +179,10 @@ impl LayoutSolver for Align {
 /// This acts as a frame that consuming space from the parent before delegating to the child.
 #[derive(Debug, Clone)]
 struct Padding {
-    /// The uniform padding amount applied to all four sides (left, top, right, bottom).
-    padding: f64,
+    /// The horizontal padding to apply on both sides.
+    pad_x: f64,
+    /// The vertical padding to apply on top and bottom.
+    pad_y: f64,
     /// The unique identifier of the child node wrapped by this padding.
     child: NodeId,
 }
@@ -184,10 +195,10 @@ impl LayoutSolver for Padding {
         Constraint {
             width: parent_constraint
                 .width
-                .map(|w| (w - self.padding * 2.0).max(0.0)),
+                .map(|w| (w - self.pad_x * 2.0).max(0.0)),
             height: parent_constraint
                 .height
-                .map(|h| (h - self.padding * 2.0).max(0.0)),
+                .map(|h| (h - self.pad_y * 2.0).max(0.0)),
         }
     }
     /// Determines the final size and position of the padding widget and its child.
@@ -205,12 +216,11 @@ impl LayoutSolver for Padding {
         let child_node = tree.get(&self.child);
         let child_size = child_node.size();
 
-        positioner
-            .set(self.child, Vec2::new(self.padding, self.padding));
+        positioner.set(self.child, Vec2::new(self.pad_x, self.pad_y));
 
         Size::new(
-            child_size.width + self.padding * 2.0,
-            child_size.height + self.padding * 2.0,
+            child_size.width + self.pad_x * 2.0,
+            child_size.height + self.pad_y * 2.0,
         )
     }
 }
