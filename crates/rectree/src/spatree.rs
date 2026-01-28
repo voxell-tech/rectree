@@ -1,7 +1,7 @@
 use core::ops::Deref;
 
-use alloc::boxed::Box;
 use alloc::vec::Vec;
+use alloc::{boxed::Box, vec};
 use kurbo::{Point, Rect};
 
 #[derive(Default)]
@@ -24,6 +24,11 @@ impl Spatree {
     }
 
     pub fn build(&mut self, point_from_rect: fn(&Rect) -> Point) {
+        let internal_node_len = self.rects.len() - 1;
+        if internal_node_len == 0 {
+            return;
+        }
+
         let bound_size = self.bound.size();
         let mut morton_codes = self
             .rects
@@ -42,20 +47,74 @@ impl Spatree {
         morton_codes.sort_unstable();
 
         // Top down hierarchy building for single threaded algorithm.
-        // let split_idx = find_split(morton_codes, first, last)
+        self.nodes = generate_hierarchy_iterative(&morton_codes);
+    }
+
+    pub fn calculate_bounds(&mut self) {
+        if self.nodes.is_empty() {
+            return;
+        }
+
+        // Because internal nodes were allocated top-down, children
+        // always have a higher index than their parents. By iterating
+        // backwards, we process the tree bottom-up.
+        for i in (0..self.nodes.len()).rev() {
+            let mut combined_rect = None;
+
+            // Check both children to compute the unioned bounding box
+            for child_id in self.nodes[i].children {
+                let child_rect = match child_id {
+                    NodeId::Leaf(rect_id) => {
+                        // Leaf bounds are already known from the input rects
+                        self.rects[*rect_id]
+                    }
+                    NodeId::Internal(idx) => {
+                        // Because idx > i, this child's rect was
+                        // already calculated in a previous iteration of this loop.
+                        self.nodes[idx].rect
+                    }
+                    NodeId::Invalid => Rect::ZERO,
+                };
+
+                // Union the child's rect into the parent's rect
+                combined_rect = Some(match combined_rect {
+                    None => child_rect,
+                    Some(existing) => child_rect.union(existing),
+                });
+            }
+
+            if let Some(final_rect) = combined_rect {
+                self.nodes[i].rect = final_rect;
+            }
+        }
+
+        // Optionally update the global Spatree bound to the root's bound.
+        if let Some(root) = self.nodes.first() {
+            self.bound = root.rect;
+        }
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Node {
     pub rect: Rect,
+    pub parent: NodeId,
     pub children: [NodeId; 2],
 }
 
+#[derive(
+    Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub enum NodeId {
     Internal(usize),
     Leaf(RectId),
+    #[default]
+    Invalid,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub struct RectId(usize);
 
 impl Deref for RectId {
@@ -149,4 +208,94 @@ pub const fn delta(
 pub struct MortonCode {
     pub code: u32,
     pub index: usize,
+}
+
+pub fn generate_hierarchy_iterative(
+    codes: &[MortonCode],
+) -> Vec<Node> {
+    let len = codes.len();
+    if len <= 1 {
+        return Vec::new();
+    }
+
+    // A binary tree with N leaves has exactly N - 1 internal nodes.
+    let mut internal_nodes = vec![
+        Node {
+            rect: Rect::default(),
+            parent: NodeId::Invalid,
+            children: [NodeId::Invalid; 2],
+        };
+        len - 1
+    ];
+
+    let mut stack = Vec::with_capacity(len);
+    let mut next_internal_idx = 0;
+
+    /// Represents a range to be split and its connection to the tree.
+    struct BuildTask {
+        first: usize,
+        last: usize,
+        parent_idx: Option<usize>,
+        /// `0` for left, `1` for right.
+        child_slot: usize,
+    }
+
+    // Push the root task: the full range of sorted Morton codes.
+    stack.push(BuildTask {
+        first: 0,
+        last: len - 1,
+        parent_idx: None,
+        child_slot: 0,
+    });
+
+    while let Some(task) = stack.pop() {
+        let BuildTask {
+            first,
+            last,
+            parent_idx,
+            child_slot,
+        } = task;
+
+        let current_node_id = if first == last {
+            // Is leaf node: use the index stored in `MortonCode` .
+            NodeId::Leaf(RectId(codes[first].index))
+        } else {
+            // Internal node case.
+            let node_idx = next_internal_idx;
+            next_internal_idx += 1;
+
+            let split = find_split(codes, first, last);
+
+            // Push right sub-range then left sub-range (LIFO)
+            stack.push(BuildTask {
+                first: split + 1,
+                last,
+                parent_idx: Some(node_idx),
+                child_slot: 1,
+            });
+
+            stack.push(BuildTask {
+                first,
+                last: split,
+                parent_idx: Some(node_idx),
+                child_slot: 0,
+            });
+
+            NodeId::Internal(node_idx)
+        };
+
+        // Link the current node to its parent if it's not the root
+        if let Some(parent_idx) = parent_idx {
+            internal_nodes[parent_idx].children[child_slot] =
+                current_node_id;
+
+            // If the current node is internal, set its parent pointer
+            if let NodeId::Internal(curr_idx) = current_node_id {
+                internal_nodes[curr_idx].parent =
+                    NodeId::Internal(parent_idx);
+            }
+        }
+    }
+
+    internal_nodes
 }
