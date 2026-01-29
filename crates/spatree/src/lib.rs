@@ -1,6 +1,4 @@
-//! A spatial LBVH tree via Morton codes for hit collision detection.
-//! Reference: <https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu/>
-
+#![doc = include_str!("../README.md")]
 #![no_std]
 
 extern crate alloc;
