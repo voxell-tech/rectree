@@ -7,8 +7,9 @@ extern crate alloc;
 
 use core::ops::Deref;
 
+use alloc::boxed::Box;
+use alloc::vec;
 use alloc::vec::Vec;
-use alloc::{boxed::Box, vec};
 use kurbo::{Point, Rect};
 
 #[derive(Default)]
