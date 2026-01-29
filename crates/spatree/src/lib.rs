@@ -1,6 +1,10 @@
 //! A spatial LBVH tree via Morton codes for hit collision detection.
 //! Reference: <https://developer.nvidia.com/blog/thinking-parallel-part-iii-tree-construction-gpu/>
 
+#![no_std]
+
+extern crate alloc;
+
 use core::ops::Deref;
 
 use alloc::vec::Vec;

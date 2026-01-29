@@ -18,7 +18,6 @@ pub use kurbo;
 
 pub mod layout;
 pub mod node;
-pub mod spatree;
 
 /// A hierarchical tree of rectangular layout nodes.
 ///
