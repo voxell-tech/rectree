@@ -13,9 +13,9 @@ use kurbo::{Point, Rect};
 
 #[derive(Default)]
 pub struct Spatree {
-    pub bound: Rect,
-    pub rects: Vec<Rect>,
-    pub nodes: Vec<Node>,
+    bound: Rect,
+    rects: Vec<Rect>,
+    nodes: Vec<Node>,
 }
 
 // Builders.
@@ -29,6 +29,14 @@ impl Spatree {
         self.bound = self.bound.union(rect);
         self.rects.push(rect);
         RectId(index)
+    }
+
+    pub fn get_rect(&self, id: RectId) -> &Rect {
+        &self.rects[*id]
+    }
+
+    pub fn get_bound(&self) -> &Rect {
+        &self.bound
     }
 
     /// Build node hierarchy and calculate their bounds.
@@ -102,11 +110,14 @@ impl Spatree {
 
 /// Queries.
 impl Spatree {
-    pub fn query<T>(
+    pub fn query<T, F>(
         &self,
         target: T,
-        hit_condition: fn(&Rect, &T) -> bool,
-    ) -> Vec<RectId> {
+        hit_condition: F,
+    ) -> Vec<RectId>
+    where
+        F: Fn(&Rect, &T) -> bool,
+    {
         let mut hits = Vec::new();
 
         if self.nodes.is_empty() {
@@ -117,7 +128,34 @@ impl Spatree {
                 hits.push(RectId(0));
             }
         } else {
-            // Traveres the tree.
+            // Traverse the tree.
+            let mut stack = vec![0];
+
+            while let Some(node_idx) = stack.pop() {
+                let node = self.nodes[node_idx];
+
+                // Skip the tree if it's not a hit.
+                if !hit_condition(&node.rect, &target) {
+                    continue;
+                }
+
+                for child in node.children.iter() {
+                    match child {
+                        NodeId::Internal(child_idx) => {
+                            stack.push(*child_idx)
+                        }
+                        NodeId::Leaf(leaf_idx) => {
+                            if hit_condition(
+                                &self.rects[*leaf_idx],
+                                &target,
+                            ) {
+                                hits.push(RectId(*leaf_idx));
+                            }
+                        }
+                        NodeId::Invalid => continue,
+                    }
+                }
+            }
         }
 
         hits
@@ -126,7 +164,7 @@ impl Spatree {
     pub fn query_point(&self, point: Point) -> Vec<RectId> {
         self.query(
             point,
-            #[inline]
+            #[inline(always)]
             |rect, point| rect.contains(*point),
         )
     }
@@ -134,7 +172,7 @@ impl Spatree {
     pub fn query_rect(&self, rect: Rect) -> Vec<RectId> {
         self.query(
             rect,
-            #[inline]
+            #[inline(always)]
             |rect, target_rect| rect.overlaps(*target_rect),
         )
     }
