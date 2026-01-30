@@ -10,42 +10,73 @@ use alloc::vec;
 use alloc::vec::Vec;
 use kurbo::{Point, Rect};
 
+/// **Spatree** implements a Linear Bounding Volume Hierarchy (LBVH).
+///
+/// It uses _Morton encoding_ to map 2D spaital coordinates onto a 1D
+/// Z-order curve. Sorting these codes ensures spatially close objects
+/// are adjacent in memory, allowing for efficient top-down hierarchy
+/// generation.
 #[derive(Default)]
 pub struct Spatree {
-    bound: Rect,
+    global_bound: Rect,
     rects: Vec<Rect>,
     nodes: Vec<Node>,
 }
 
 // Builders.
 impl Spatree {
+    /// Creates a new empty [`Spatree`].
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Push a new [`Rect`] into the spatial tree.
+    ///
+    /// If this is performed after [`Self::build()`], a rebuild will
+    /// be required to cater for the change!
     pub fn push_rect(&mut self, rect: Rect) -> RectId {
         let index = self.rects.len();
-        self.bound = self.bound.union(rect);
         self.rects.push(rect);
+        // Fit the global bound to the new rect.
+        self.global_bound = self.global_bound.union(rect);
         RectId(index)
     }
 
-    pub fn get_rect(&self, id: RectId) -> &Rect {
-        &self.rects[*id]
+    /// Get a specific [`Rect`] for a given [`RectId`].
+    pub fn get_rect(&self, id: RectId) -> Option<&Rect> {
+        self.rects.get(*id)
     }
 
-    pub fn get_bound(&self) -> &Rect {
-        &self.bound
+    /// Obtain the global bounding box of the spatial tree.
+    /// Thi global bound is accumulated during
+    /// [`Self::push_rect()`] calls.
+    pub fn global_bound(&self) -> &Rect {
+        &self.global_bound
     }
 
-    /// Build node hierarchy and calculate their bounds.
-    pub fn build(&mut self, point_from_rect: fn(&Rect) -> Point) {
-        let internal_node_len = self.rects.len() - 1;
-        if internal_node_len == 0 {
+    /// Constructs a spatial hierarchy (LBVH) from the current set of rectangles.
+    ///
+    /// ### Arguments
+    ///
+    /// - `point_from_rect`: A closure that determines the stable
+    ///   representative point (e.g., center or top-left) of a `Rect`
+    ///   used for Morton encoding.
+    ///
+    /// After construction, all internal node bounding boxes are computed.
+    ///
+    /// If [`Self::global_bound()`] has zero area, the tree is left
+    /// empty since no meaningful spatial ordering can be derived.
+    pub fn build<F>(&mut self, point_from_rect: F)
+    where
+        F: Fn(&Rect) -> Point,
+    {
+        let bound_size = self.global_bound.size();
+        // There is point in building a spatial tree when there is no
+        // space within the max bound.
+        if bound_size.is_zero_area() {
             return;
         }
 
-        let bound_size = self.bound.size();
         let mut morton_codes = self
             .rects
             .iter()
@@ -67,6 +98,7 @@ impl Spatree {
         self.calculate_internal_bounds();
     }
 
+    /// Calculate the bounds of all the internal nodes.
     fn calculate_internal_bounds(&mut self) {
         if self.nodes.is_empty() {
             return;
@@ -109,6 +141,7 @@ impl Spatree {
 
 /// Queries.
 impl Spatree {
+    /// Query for hits for an arbitrary target and hit condition.
     pub fn query<T, F>(
         &self,
         target: T,
@@ -120,7 +153,8 @@ impl Spatree {
         let mut hits = Vec::new();
 
         if self.nodes.is_empty() {
-            // There's no tree, if there's just one rect, do a hit test for it.
+            // There's no tree, if there's just one rect, do a hit
+            // test for it.
             if let Some(rect) = self.rects.first()
                 && hit_condition(rect, &target)
             {
@@ -160,6 +194,7 @@ impl Spatree {
         hits
     }
 
+    /// Query for rects that contains the given [`Point`].
     pub fn query_point(&self, point: Point) -> Vec<RectId> {
         self.query(
             point,
@@ -168,6 +203,7 @@ impl Spatree {
         )
     }
 
+    /// Query for rects that overlaps the given [`Rect`].
     pub fn query_rect(&self, rect: Rect) -> Vec<RectId> {
         self.query(
             rect,
@@ -177,6 +213,7 @@ impl Spatree {
     }
 }
 
+/// An internal node within the [`Spatree`].
 #[derive(Debug, Clone, Copy)]
 pub struct Node {
     pub rect: Rect,
@@ -185,6 +222,7 @@ pub struct Node {
 }
 
 impl Node {
+    /// Empty node with zero area, no children, and no parent.
     pub const EMPTY: Self = Self {
         rect: Rect::ZERO,
         parent: None,
@@ -214,12 +252,29 @@ impl Deref for RectId {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
-)]
+/// Stores the Morton code alongside their associated leaf index.
+///
+/// This struct is optimized for ordering based only on
+/// [`Self::code`] without any consideration for [`Self::index`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MortonCode {
     pub code: u32,
     pub index: usize,
+}
+
+impl Ord for MortonCode {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.code.cmp(&other.code)
+    }
+}
+
+impl PartialOrd for MortonCode {
+    fn partial_cmp(
+        &self,
+        other: &Self,
+    ) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 /// Top down hierarchy building for single threaded algorithm.
@@ -301,7 +356,8 @@ pub fn generate_hierarchy(codes: &[MortonCode]) -> Vec<Node> {
     internal_nodes
 }
 
-/// `x` & `y` must be within the `0..=1` range.
+/// `x` & `y` must be within (and will be clamped into)
+/// the `0..=1` range.
 pub fn morton_2d_f64(x: f64, y: f64) -> u32 {
     const MAX: f64 = 65535.0;
     let x = (x.clamp(0.0, 1.0) * MAX) as u16;
@@ -322,6 +378,10 @@ pub fn morton_2d(x: u16, y: u16) -> u32 {
     expand(x as u32) | (expand(y as u32) << 1)
 }
 
+/// Find the split point for a range of sorted Morton codes.
+///
+/// Locate the position where the shared bit prefix changes and
+/// return the index used to divide the range into two clusters.
 pub const fn find_split(
     morton_codes: &[MortonCode],
     first: usize,
