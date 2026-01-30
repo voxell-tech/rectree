@@ -429,3 +429,141 @@ pub const fn find_split(
 pub const fn calc_common_prefix(code_a: u32, code_b: u32) -> u32 {
     (code_a ^ code_b).leading_zeros()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_empty_tree() {
+        let mut tree = Spatree::new();
+        tree.build(|r| r.center());
+
+        assert!(tree.rects.is_empty());
+        assert!(tree.nodes.is_empty());
+        assert_eq!(tree.global_bound().area(), 0.0);
+
+        let hits = tree.query_point(Point::new(10.0, 10.0));
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn test_single_item_tree() {
+        let mut tree = Spatree::new();
+        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let id = tree.push_rect(r1);
+
+        tree.build(|r| r.center());
+
+        // Single item means N-1 = 0 internal nodes.
+        assert!(tree.nodes.is_empty());
+
+        // Hit
+        let hits = tree.query_point(Point::new(5.0, 5.0));
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0], id);
+    }
+
+    #[test]
+    fn test_hierarchy_structure_and_bounds() {
+        let mut tree = Spatree::new();
+
+        // 4 corners of a 100x100 area
+        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0); // TL
+        let r2 = Rect::new(90.0, 0.0, 100.0, 10.0); // TR
+        let r3 = Rect::new(0.0, 90.0, 10.0, 100.0); // BL
+        let r4 = Rect::new(90.0, 90.0, 100.0, 100.0); // BR
+
+        tree.push_rect(r1);
+        tree.push_rect(r2);
+        tree.push_rect(r3);
+        tree.push_rect(r4);
+
+        tree.build(|r| r.center());
+
+        // N items = N-1 internal nodes.
+        assert_eq!(tree.nodes.len(), 3);
+
+        // Root is the first node generated in top-down.
+        let root = &tree.nodes[0];
+        let expected_union = r1.union(r2).union(r3).union(r4);
+
+        assert_eq!(root.rect.x0, expected_union.x0);
+        assert_eq!(root.rect.y0, expected_union.y0);
+        assert_eq!(root.rect.x1, expected_union.x1);
+        assert_eq!(root.rect.y1, expected_union.y1);
+    }
+
+    #[test]
+    fn test_query_point() {
+        let mut tree = Spatree::new();
+        let r1 = Rect::new(10.0, 10.0, 30.0, 30.0);
+        let r2 = Rect::new(20.0, 20.0, 40.0, 40.0);
+
+        let id1 = tree.push_rect(r1);
+        let id2 = tree.push_rect(r2);
+
+        tree.build(|r| r.center());
+
+        // Point inside intersection
+        let hits = tree.query_point(Point::new(25.0, 25.0));
+        assert_eq!(hits.len(), 2);
+        assert!(hits.contains(&id1));
+        assert!(hits.contains(&id2));
+    }
+
+    #[test]
+    fn test_query_rect() {
+        let mut tree = Spatree::new();
+
+        // Define three distinct areas
+        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0); // Top-left
+        let r2 = Rect::new(20.0, 0.0, 30.0, 10.0); // Top-right
+        let r3 = Rect::new(0.0, 20.0, 30.0, 30.0); // Bottom wide strip
+
+        let id1 = tree.push_rect(r1);
+        let id2 = tree.push_rect(r2);
+        let id3 = tree.push_rect(r3);
+
+        tree.build(|r| r.center());
+
+        // 1. Overlap only r1
+        let q1 = Rect::new(-5.0, -5.0, 5.0, 5.0);
+        let hits = tree.query_rect(q1);
+        assert_eq!(hits.len(), 1);
+        assert!(hits.contains(&id1));
+
+        // 2. Overlap r1 and r2 but not r3
+        let q2 = Rect::new(5.0, 2.0, 25.0, 8.0);
+        let hits = tree.query_rect(q2);
+        assert_eq!(hits.len(), 2);
+        assert!(hits.contains(&id1));
+        assert!(hits.contains(&id2));
+        assert!(!hits.contains(&id3));
+
+        // 3. Overlap all three
+        // This rectangle sits in the center and touches all areas
+        let q3 = Rect::new(5.0, 5.0, 25.0, 25.0);
+        let hits = tree.query_rect(q3);
+        assert_eq!(hits.len(), 3);
+        assert!(hits.contains(&id1));
+        assert!(hits.contains(&id2));
+        assert!(hits.contains(&id3));
+
+        // 4. Complete miss
+        let q4 = Rect::new(100.0, 100.0, 110.0, 110.0);
+        let hits = tree.query_rect(q4);
+        assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn test_morton_logic_consistency() {
+        // Ensure x and y bits are interleaved correctly.
+        // x=1 (01), y=0 (00) -> 01
+        assert_eq!(morton_2d(1, 0), 1);
+        // x=0 (00), y=1 (01) -> 10 (binary) -> 2
+        assert_eq!(morton_2d(0, 1), 2);
+        // x=1 (01), y=1 (01) -> 11 (binary) -> 3
+        assert_eq!(morton_2d(1, 1), 3);
+    }
+}
