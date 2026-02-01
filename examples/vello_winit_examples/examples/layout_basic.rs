@@ -84,8 +84,10 @@ fn main() {
                                                     Some(id),
                                                     Color::TRANSPARENT,
                                                     |demo, parent_id| Padding {
-                                                        pad_x: 0.0,
-                                                        pad_y: 30.0,
+                                                        left: 0.0,
+                                                        right: 0.0,
+                                                        top: 30.0,
+                                                        bottom: 30.0,
                                                         child: demo.add_widget(
                                                             Some(parent_id),
                                                             Color::from_rgb8(100, 255, 100),
@@ -109,8 +111,10 @@ fn main() {
                                     );
                                     // Wrap the vertical stack in a padding container
                                     Padding {
-                                        pad_x: 20.0,
-                                        pad_y: 20.0,
+                                        left: 10.0,
+                                        right: 10.0,
+                                        top: 20.0,
+                                        bottom: 20.0,
                                         child,
                                     }
                                 },
@@ -275,30 +279,29 @@ impl LayoutSolver for Align {
     }
 }
 
-/// A container widget that applies a fixed amount of padding around its single child.
-/// This acts as a frame that consuming space from the parent before delegating to the child.
+/// A container widget that applies specific padding to each side.
 #[derive(Debug, Clone)]
 struct Padding {
-    /// The horizontal padding to apply on both sides.
-    pad_x: f64,
-    /// The vertical padding to apply on top and bottom.
-    pad_y: f64,
-    /// The unique identifier of the child node wrapped by this padding.
+    left: f64,
+    top: f64,
+    right: f64,
+    bottom: f64,
     child: NodeId,
 }
-
 impl LayoutSolver for Padding {
     fn constraint(
         &self,
         parent_constraint: Constraint,
     ) -> Constraint {
         Constraint {
+            // Subtract horizontal padding from width
             width: parent_constraint
                 .width
-                .map(|w| (w - self.pad_x * 2.0).max(0.0)),
+                .map(|w| (w - (self.left + self.right)).max(0.0)),
+            // Subtract vertical padding from height
             height: parent_constraint
                 .height
-                .map(|h| (h - self.pad_y * 2.0).max(0.0)),
+                .map(|h| (h - (self.top + self.bottom)).max(0.0)),
         }
     }
     /// Determines the final size and position of the padding widget and its child.
@@ -316,11 +319,12 @@ impl LayoutSolver for Padding {
         let child_node = tree.get(&self.child);
         let child_size = child_node.size();
 
-        positioner.set(self.child, Vec2::new(self.pad_x, self.pad_y));
+        // Position the child with the specified padding offsets
+        positioner.set(self.child, Vec2::new(self.left, self.top));
 
         Size::new(
-            child_size.width + self.pad_x * 2.0,
-            child_size.height + self.pad_y * 2.0,
+            child_size.width + self.left + self.right,
+            child_size.height + self.top + self.bottom,
         )
     }
 }
