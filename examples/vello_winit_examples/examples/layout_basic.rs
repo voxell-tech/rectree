@@ -20,113 +20,98 @@ fn main() {
     let event_loop = EventLoop::new().unwrap();
     let mut demo = LayoutDemo::new();
 
-    // Viewport as root widget that aligns its content to the center of the window.
-    demo.add_widget(None, Color::TRANSPARENT, |demo, root_viewport_id| Viewport {
-        width: WINDOW_WIDTH,
-        height: WINDOW_HEIGHT,
-        child: demo.add_widget(
-            Some(root_viewport_id),
-            Color::TRANSPARENT,
-            |demo, align_root| {
-                // Create a horizontal stack container.
-                let content = demo.add_widget(
-                    Some(align_root),
-                    Color::TRANSPARENT,
-                    |demo, root_id| Horizontal {
-                        spacing: 20.0,
-                        children: vec![
-                            demo.add_widget(
-                                Some(root_id),
-                                Color::from_rgb8(200, 200, 10),
-                                |demo, id| VerticalCenteredList {
-                                    padding: 20.0,
-                                    children: (0..5)
-                                        .map(|_i| {
-                                            let area = FixedArea {
-                                                use_width: false,
-                                                target_area: AREA,
-                                            };
+    demo.add_widget(
+        None,
+        Color::TRANSPARENT,
+        |demo, root_id| {
+            // Create a horizontal stack container.
+            let content = demo.add_widget(
+                Some(root_id),
+                Color::TRANSPARENT,
+                |demo, root_id| Horizontal {
+                    spacing: 20.0,
+                    children: vec![
+                        demo.add_widget(
+                            Some(root_id),
+                            Color::from_rgb8(200, 200, 10),
+                            |demo, id| VerticalCenteredList {
+                                padding: 20.0,
+                                children: (0..5)
+                                    .map(|_i| {
+                                        let area = FixedArea {
+                                            use_width: false,
+                                            target_area: AREA,
+                                        };
 
+                                        demo.add_widget(
+                                            Some(id),
+                                            Color::from_rgb8(10, 200, 200),
+                                            |_, _| area,
+                                        )
+                                    })
+                                    .collect(),
+                            },
+                        ),
+                        demo.add_widget(
+                            Some(root_id),
+                            // Visualize padding container with white background
+                            Color::WHITE,
+                            // Create a vertical stack of fixed height rectangles
+                            |demo, id| {
+                                let child = demo.add_widget(
+                                    Some(id),
+                                    Color::TRANSPARENT,
+                                    |demo, id| Vertical {
+                                        spacing: 20.0,
+                                        children: vec![
                                             demo.add_widget(
                                                 Some(id),
-                                                Color::from_rgb8(
-                                                    10, 200, 200,
-                                                ),
-                                                |_, _| area,
-                                            )
-                                        })
-                                        .collect(),
-                                },
-                            ),
-                            demo.add_widget(
-                                Some(root_id),
-                                // Visualize padding container with white background
-                                Color::WHITE,
-                                // Create a vertical stack of fixed height rectangles
-                                |demo, id| {
-                                    let child = demo.add_widget(
-                                        Some(id),
-                                        Color::TRANSPARENT,
-                                        |demo, id| Vertical {
-                                            spacing: 20.0,
-                                            children: vec![
-                                                demo.add_widget(
-                                                    Some(id),
-                                                    Color::from_rgb8(
-                                                        255, 100, 100,
+                                                Color::from_rgb8(255, 100, 100),
+                                                |_, _| FixedHeightRect { height: 100.0 },
+                                            ),
+                                            // Margin example using Padding widget
+                                            demo.add_widget(
+                                                Some(id),
+                                                Color::TRANSPARENT,
+                                                |demo, parent_id| Padding {
+                                                    left: 0.0,
+                                                    right: 0.0,
+                                                    top: 30.0,
+                                                    bottom: 30.0,
+                                                    child: demo.add_widget(
+                                                        Some(parent_id),
+                                                        Color::from_rgb8(100, 255, 100),
+                                                        |_, _| FixedHeightRect {
+                                                            height: 200.0,
+                                                        },
                                                     ),
-                                                    |_, _| FixedHeightRect {
-                                                        height: 100.0,
-                                                    },
-                                                ),
-                                                // Margin example using Padding widget
-                                                demo.add_widget(
-                                                    Some(id),
-                                                    Color::TRANSPARENT,
-                                                    |demo, parent_id| Padding {
-                                                        left: 0.0,
-                                                        right: 0.0,
-                                                        top: 30.0,
-                                                        bottom: 30.0,
-                                                        child: demo.add_widget(
-                                                            Some(parent_id),
-                                                            Color::from_rgb8(100, 255, 100),
-                                                            |_, _| FixedHeightRect {
-                                                                height: 200.0,
-                                                            },
-                                                        ),
-                                                    },
-                                                ),
-                                                demo.add_widget(
-                                                    Some(id),
-                                                    Color::from_rgb8(
-                                                        100, 100, 255,
-                                                    ),
-                                                    |_, _| FixedHeightRect {
-                                                        height: 130.0,
-                                                    },
-                                                ),
-                                            ],
-                                        },
-                                    );
-                                    // Wrap the vertical stack in a padding container
-                                    Padding {
-                                        left: 10.0,
-                                        right: 10.0,
-                                        top: 20.0,
-                                        bottom: 20.0,
-                                        child,
-                                    }
-                                },
-                            ),
-                        ],
-                    },
-                );
-                // Align the content in the top center of the window
-                Align::new(Alignment::TOP_CENTER, content)
-            },
-        ),
-    });
+                                                },
+                                            ),
+                                            demo.add_widget(
+                                                Some(id),
+                                                Color::from_rgb8(100, 100, 255),
+                                                |_, _| FixedHeightRect { height: 130.0 },
+                                            ),
+                                        ],
+                                    },
+                                );
+                                // Wrap the vertical stack in a padding container
+                                Padding {
+                                    left: 10.0,
+                                    right: 10.0,
+                                    top: 20.0,
+                                    bottom: 20.0,
+                                    child,
+                                }
+                            },
+                        ),
+                    ],
+                },
+            );
+            // Align the content in the top center of the window
+            Align::new(Alignment::TOP_CENTER, content)
+        },
+    );
 
     // Initial layout.
     demo.tree.layout(&demo.world);
@@ -136,45 +121,89 @@ fn main() {
     event_loop.run_app(&mut app).unwrap();
 }
 
-/// A viewport that enforces a fixed size on its child.
-#[derive(Debug, Clone)]
-struct Viewport {
-    width: f64,
-    height: f64,
-    child: NodeId,
-}
-
-impl LayoutSolver for Viewport {
-    fn constraint(&self, _parent: Constraint) -> Constraint {
-        // Establish a fixed root constraint representing the window dimensions.
-        Constraint {
-            width: Some(self.width),
-            height: Some(self.height),
-        }
-    }
-
-    fn build(
-        &self,
-        _node: &RectNode,
-        _tree: &Rectree,
-        positioner: &mut Positioner,
-    ) -> Size {
-        // Position the child at the origin of the viewport
-        positioner.set(self.child, Vec2::ZERO);
-        Size::new(self.width, self.height)
-    }
-}
-
-/// Represents a point within a rectangle relative to its size.
-/// (0.0, 0.0) is Top-Left, (1.0, 1.0) is Bottom-Right.
+/// Represents alignment within a rectangle using a coordinate system
+/// where (-1.0, -1.0) is Top-Left and (1.0, 1.0) is Bottom-Right.
 #[derive(Debug, Clone, Copy)]
 struct Alignment {
-    /// Horizontal alignment: 0.0 = Left, 0.5 = Center, 1.0 = Right.
+    /// Horizontal alignment: -1.0 = Left, 0.0 = Center, 1.0 = Right.
     align_x: f64,
-    /// Vertical alignment: 0.0 = Top, 0.5 = Center, 1.0 = Bottom.
+    /// Vertical alignment: -1.0 = Top, 0.0 = Center, 1.0 = Bottom.
     align_y: f64,
 }
 
+// TODO: Move to the other module for reuse and prevent dead_code warning.
+#[allow(dead_code)]
+impl Alignment {
+    /// Create a custom alignment.
+    pub const fn new(x: f64, y: f64) -> Self {
+        Self {
+            align_x: x,
+            align_y: y,
+        }
+    }
+
+    // Predefined alignments
+    pub const TOP_LEFT: Self = Self {
+        align_x: -1.0,
+        align_y: -1.0,
+    };
+    pub const TOP_CENTER: Self = Self {
+        align_x: 0.0,
+        align_y: -1.0,
+    };
+    pub const TOP_RIGHT: Self = Self {
+        align_x: 1.0,
+        align_y: -1.0,
+    };
+
+    pub const CENTER_LEFT: Self = Self {
+        align_x: -1.0,
+        align_y: 0.0,
+    };
+    pub const CENTER: Self = Self {
+        align_x: 0.0,
+        align_y: 0.0,
+    };
+    pub const CENTER_RIGHT: Self = Self {
+        align_x: 1.0,
+        align_y: 0.0,
+    };
+
+    pub const BOTTOM_LEFT: Self = Self {
+        align_x: -1.0,
+        align_y: 1.0,
+    };
+    pub const BOTTOM_CENTER: Self = Self {
+        align_x: 0.0,
+        align_y: 1.0,
+    };
+    pub const BOTTOM_RIGHT: Self = Self {
+        align_x: 1.0,
+        align_y: 1.0,
+    };
+
+    /// Convert alignment coordinates to offset within available space.
+    ///
+    /// Formula: offset = (available_size - child_size) * (alignment + 1.0) / 2.0
+    ///
+    /// Examples:
+    /// - alignment = -1.0: offset = 0.0 (left/top)
+    /// - alignment = 0.0:  offset = (available - child) / 2.0 (center)
+    /// - alignment = 1.0:  offset = available - child (right/bottom)
+    pub fn along_offset(self, available: Size, child: Size) -> Vec2 {
+        let (factor_x, factor_y) = self.to_normalized();
+
+        Vec2::new(
+            (available.width - child.width) * factor_x,
+            (available.height - child.height) * factor_y,
+        )
+    }
+
+    /// Alternative method to get normalized (0..1) representation.
+    pub fn to_normalized(self) -> (f64, f64) {
+        ((self.align_x + 1.0) / 2.0, (self.align_y + 1.0) / 2.0)
+    }
+}
 /// Aligns a child node within the available space.
 #[derive(Debug, Clone)]
 struct Align {
@@ -183,60 +212,8 @@ struct Align {
 }
 
 impl Align {
-    pub fn new(alignment: Alignment, child: NodeId) -> Self {
+    fn new(alignment: Alignment, child: NodeId) -> Self {
         Self { alignment, child }
-    }
-}
-
-// TODO: Move to the other module for reuse and prevent dead_code warning.
-#[allow(dead_code)]
-impl Alignment {
-    // Predefined alignments
-    pub const TOP_LEFT: Self = Self {
-        align_x: 0.0,
-        align_y: 0.0,
-    };
-    pub const TOP_CENTER: Self = Self {
-        align_x: 0.5,
-        align_y: 0.0,
-    };
-    pub const TOP_RIGHT: Self = Self {
-        align_x: 1.0,
-        align_y: 0.0,
-    };
-
-    pub const CENTER_LEFT: Self = Self {
-        align_x: 0.0,
-        align_y: 0.5,
-    };
-    pub const CENTER: Self = Self {
-        align_x: 0.5,
-        align_y: 0.5,
-    };
-    pub const CENTER_RIGHT: Self = Self {
-        align_x: 1.0,
-        align_y: 0.5,
-    };
-
-    pub const BOTTOM_LEFT: Self = Self {
-        align_x: 0.0,
-        align_y: 1.0,
-    };
-    pub const BOTTOM_CENTER: Self = Self {
-        align_x: 0.5,
-        align_y: 1.0,
-    };
-    pub const BOTTOM_RIGHT: Self = Self {
-        align_x: 1.0,
-        align_y: 1.0,
-    };
-
-    // Custom alignment constructor
-    pub fn new(x: f64, y: f64) -> Self {
-        Self {
-            align_x: x,
-            align_y: y,
-        }
     }
 }
 
@@ -254,28 +231,27 @@ impl LayoutSolver for Align {
         tree: &Rectree,
         positioner: &mut Positioner,
     ) -> Size {
-        let container_width =
-            node.parent_constraint().width.unwrap_or(0.0);
-        let container_height =
-            node.parent_constraint().height.unwrap_or(0.0);
-        let container_size =
-            Size::new(container_width, container_height);
-
         let child_node = tree.get(&self.child);
         let child_size = child_node.size();
 
-        let delta = container_size - child_size;
+        // Determine available space
+        let available_width = node
+            .parent_constraint()
+            .width
+            .unwrap_or(child_size.width);
+        let available_height = node
+            .parent_constraint()
+            .height
+            .unwrap_or(child_size.height);
 
-        positioner.set(
-            self.child,
-            Vec2::new(
-                delta.width.max(0.0) * self.alignment.align_x,
-                delta.height.max(0.0) * self.alignment.align_y,
-            ),
-        );
+        let available_size =
+            Size::new(available_width, available_height);
 
-        // Align itself fills the container
-        container_size
+        let offset =
+            self.alignment.along_offset(available_size, child_size);
+        positioner.set(self.child, offset);
+
+        available_size
     }
 }
 
@@ -335,9 +311,7 @@ struct Horizontal {
     spacing: f64,
     children: Vec<NodeId>,
 }
-// Horizontal logic
-// Enforce the parent's height on children
-// Relax the width constraint so children can stack infinitely
+
 impl LayoutSolver for Horizontal {
     fn constraint(
         &self,
@@ -355,8 +329,7 @@ impl LayoutSolver for Horizontal {
         tree: &Rectree,
         positioner: &mut Positioner,
     ) -> Size {
-        let height = node.parent_constraint().height.unwrap_or(0.0);
-
+        let mut max_height = 0.0;
         let mut x_cursor = 0.0;
 
         for id in self.children.iter() {
@@ -364,13 +337,20 @@ impl LayoutSolver for Horizontal {
             let child_size = child_node.size();
 
             positioner.set(*id, Vec2::new(x_cursor, 0.0));
-
             x_cursor += child_size.width + self.spacing;
+
+            // Track the tallest child
+            if child_size.height > max_height {
+                max_height = child_size.height;
+            }
         }
         // Remove the last added spacing
         if !self.children.is_empty() {
             x_cursor -= self.spacing;
         }
+
+        let height =
+            node.parent_constraint().height.unwrap_or(max_height);
 
         Size::new(x_cursor, height)
     }
@@ -382,9 +362,7 @@ struct Vertical {
     spacing: f64,
     children: Vec<NodeId>,
 }
-// Vertical logic
-// Enforce the parent's width on children
-// Relax the height constraint so children can stack infinitely
+
 impl LayoutSolver for Vertical {
     fn constraint(
         &self,
@@ -402,8 +380,7 @@ impl LayoutSolver for Vertical {
         tree: &Rectree,
         positioner: &mut Positioner,
     ) -> Size {
-        let width = node.parent_constraint().width.unwrap_or(200.0);
-
+        let mut max_width = 0.0;
         let mut y_cursor = 0.0;
 
         for id in self.children.iter() {
@@ -413,11 +390,18 @@ impl LayoutSolver for Vertical {
             positioner.set(*id, Vec2::new(0.0, y_cursor));
 
             y_cursor += child_size.height + self.spacing;
+            // Track the widest child
+            if child_size.width > max_width {
+                max_width = child_size.width;
+            }
         }
         // Remove the last added spacing
         if !self.children.is_empty() {
             y_cursor -= self.spacing;
         }
+
+        let width =
+            node.parent_constraint().width.unwrap_or(max_width);
 
         Size::new(width, y_cursor)
     }
@@ -655,8 +639,12 @@ impl VelloDemo for LayoutDemo {
     fn rebuild_scene(
         &mut self,
         scene: &mut Scene,
+        width: f64,
+        height: f64,
         _scale_factor: f64,
     ) {
+        self.tree.set_root_size(width, height);
+
         // Create an oscillating translation vector.
         let time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
