@@ -165,11 +165,14 @@ impl Rectree {
             self.root_ids.iter().copied().collect();
 
         for root_id in root_ids {
-            if let Some(node) = self.nodes.get_mut(&root_id) {
-                if node.parent_constraint != constraint {
+            match self.nodes.get_mut(&root_id) {
+                Some(node)
+                    if node.parent_constraint != constraint =>
+                {
                     node.parent_constraint = constraint;
                     self.schedule_relayout(root_id);
                 }
+                _ => {}
             }
         }
     }
