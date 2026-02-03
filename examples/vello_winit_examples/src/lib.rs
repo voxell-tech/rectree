@@ -15,7 +15,13 @@ use winit::window::Window;
 pub trait VelloDemo {
     fn window_title(&self) -> &'static str;
     fn initial_logical_size(&self) -> (f64, f64);
-    fn rebuild_scene(&mut self, scene: &mut Scene, scale_factor: f64);
+    fn rebuild_scene(
+        &mut self,
+        scene: &mut Scene,
+        width: f64,
+        height: f64,
+        scale_factor: f64,
+    );
 }
 
 pub struct VelloWinitApp<'s, D: VelloDemo> {
@@ -43,6 +49,99 @@ impl<'s, D: VelloDemo> VelloWinitApp<'s, D> {
             scene: Scene::new(),
             demo,
         }
+    }
+
+    /// Helper function to perform a complete render pass.
+    fn render(&mut self) {
+        let (surface, window) = match &mut self.state {
+            RenderState::Active { surface, window } => {
+                (surface, window)
+            }
+            _ => return,
+        };
+
+        self.scene.reset();
+
+        let size = window.inner_size();
+        let scale_factor = window.scale_factor();
+
+        if size.width == 0 || size.height == 0 {
+            return;
+        }
+
+        if surface.config.width != size.width
+            || surface.config.height != size.height
+        {
+            self.context.resize_surface(
+                surface,
+                size.width,
+                size.height,
+            );
+        }
+
+        let width = size.width as f64 / scale_factor;
+        let height = size.height as f64 / scale_factor;
+
+        self.demo.rebuild_scene(
+            &mut self.scene,
+            width,
+            height,
+            scale_factor,
+        );
+
+        let dev = &self.context.devices[surface.dev_id];
+        let texture = match surface.surface.get_current_texture() {
+            Ok(t) => t,
+            Err(
+                wgpu::SurfaceError::Lost
+                | wgpu::SurfaceError::Outdated,
+            ) => {
+                self.context.resize_surface(
+                    surface,
+                    size.width,
+                    size.height,
+                );
+                return;
+            }
+            Err(wgpu::SurfaceError::Timeout) => return,
+            Err(wgpu::SurfaceError::OutOfMemory) => {
+                panic!("GPU out of memory")
+            }
+            Err(wgpu::SurfaceError::Other) => return,
+        };
+
+        self.renderer
+            .as_mut()
+            .unwrap()
+            .render_to_texture(
+                &dev.device,
+                &dev.queue,
+                &self.scene,
+                &surface.target_view,
+                &RenderParams {
+                    base_color: Color::from_rgb8(20, 20, 30),
+                    width: surface.config.width,
+                    height: surface.config.height,
+                    antialiasing_method: AaConfig::Area,
+                },
+            )
+            .unwrap();
+
+        let mut enc = dev.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor { label: None },
+        );
+
+        surface.blitter.copy(
+            &dev.device,
+            &mut enc,
+            &surface.target_view,
+            &texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default()),
+        );
+
+        dev.queue.submit([enc.finish()]);
+        texture.present();
     }
 }
 
@@ -110,62 +209,19 @@ impl<D: VelloDemo> ApplicationHandler for VelloWinitApp<'_, D> {
         _id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        let (surface, window) = match &mut self.state {
-            RenderState::Active { surface, window } => {
-                (surface, window)
-            }
-            _ => return,
-        };
-
         match event {
             WindowEvent::CloseRequested => el.exit(),
-            WindowEvent::Resized(s) => self
-                .context
-                .resize_surface(surface, s.width, s.height),
+            WindowEvent::Resized(_) => {
+                self.render();
+            }
             WindowEvent::RedrawRequested => {
-                self.scene.reset();
-                self.demo.rebuild_scene(
-                    &mut self.scene,
-                    window.scale_factor(),
-                );
+                self.render();
 
-                let dev = &self.context.devices[surface.dev_id];
-                let texture =
-                    surface.surface.get_current_texture().unwrap();
-
-                self.renderer
-                    .as_mut()
-                    .unwrap()
-                    .render_to_texture(
-                        &dev.device,
-                        &dev.queue,
-                        &self.scene,
-                        &surface.target_view,
-                        &RenderParams {
-                            base_color: Color::from_rgb8(20, 20, 30),
-                            width: surface.config.width,
-                            height: surface.config.height,
-                            antialiasing_method: AaConfig::Area,
-                        },
-                    )
-                    .unwrap();
-
-                let mut enc = dev.device.create_command_encoder(
-                    &wgpu::CommandEncoderDescriptor { label: None },
-                );
-
-                surface.blitter.copy(
-                    &dev.device,
-                    &mut enc,
-                    &surface.target_view,
-                    &texture.texture.create_view(
-                        &wgpu::TextureViewDescriptor::default(),
-                    ),
-                );
-
-                dev.queue.submit([enc.finish()]);
-                texture.present();
-                window.request_redraw();
+                if let RenderState::Active { window, .. } =
+                    &self.state
+                {
+                    window.request_redraw();
+                }
             }
             _ => {}
         }
