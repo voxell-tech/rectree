@@ -167,7 +167,7 @@ struct Alignment {
 
 // TODO: Move to the other module if needed
 impl Alignment {
-    /// Create a custom alignment.
+    // Create a custom alignment.
     // pub const fn new(x: f64, y: f64) -> Self {
     //     Self {
     //         align_x: x,
