@@ -69,7 +69,7 @@ fn main() {
                                                     demo.add_widget(
                                                         Some(id),
                                                         Color::from_rgb8(255, 100, 100),
-                                                        |_, _| FixedHeightRect { height: 100.0 },
+                                                        |_, _| FixedHeightRect { height: 50.0 },
                                                     ),
                                                     // Margin example using Padding widget
                                                     demo.add_widget(
@@ -84,7 +84,7 @@ fn main() {
                                                                 Some(parent_id),
                                                                 Color::from_rgb8(100, 255, 100),
                                                                 |_, _| FixedHeightRect {
-                                                                    height: 200.0,
+                                                                    height: 100.0,
                                                                 },
                                                             ),
                                                         },
@@ -92,7 +92,7 @@ fn main() {
                                                     demo.add_widget(
                                                         Some(id),
                                                         Color::from_rgb8(100, 100, 255),
-                                                        |_, _| FixedHeightRect { height: 130.0 },
+                                                        |_, _| FixedHeightRect { height: 65.0 },
                                                     ),
                                                 ],
                                             },
@@ -111,7 +111,10 @@ fn main() {
                         },
                     );
                     // Align the content in the top center of the window
-                    Align::new(Alignment::TOP_CENTER, content)
+                    Align::new(
+                        Alignment::new(HAlign::Center, VAlign::Top),
+                        content
+                    )
                 },
             );
 
@@ -155,88 +158,70 @@ impl LayoutSolver for FixedSize {
     }
 }
 
-/// Represents alignment within a rectangle using a coordinate system
-/// where (-1.0, -1.0) is Top-Left and (1.0, 1.0) is Bottom-Right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HAlign {
+    Left,
+    Center,
+    Right,
+}
+
+impl HAlign {
+    pub fn to_factor(self) -> f64 {
+        match self {
+            HAlign::Left => -1.0,
+            HAlign::Center => 0.0,
+            HAlign::Right => 1.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VAlign {
+    Top,
+    Horizon,
+    Bottom,
+}
+
+impl VAlign {
+    pub fn to_factor(self) -> f64 {
+        match self {
+            VAlign::Top => -1.0,
+            VAlign::Horizon => 0.0,
+            VAlign::Bottom => 1.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Alignment {
-    /// Horizontal alignment: -1.0 = Left, 0.0 = Center, 1.0 = Right.
-    align_x: f64,
-    /// Vertical alignment: -1.0 = Top, 0.0 = Center, 1.0 = Bottom.
-    align_y: f64,
+    horizontal: HAlign,
+    vertical: VAlign,
 }
 
-// TODO: Move to the other module if needed
 impl Alignment {
-    // Create a custom alignment.
-    // pub const fn new(x: f64, y: f64) -> Self {
-    //     Self {
-    //         align_x: x,
-    //         align_y: y,
-    //     }
-    // }
-
-    // Predefined alignments
-    // pub const TOP_LEFT: Self = Self {
-    //     align_x: -1.0,
-    //     align_y: -1.0,
-    // };
-    pub const TOP_CENTER: Self = Self {
-        align_x: 0.0,
-        align_y: -1.0,
-    };
-    // pub const TOP_RIGHT: Self = Self {
-    //     align_x: 1.0,
-    //     align_y: -1.0,
-    // };
-
-    // pub const CENTER_LEFT: Self = Self {
-    //     align_x: -1.0,
-    //     align_y: 0.0,
-    // };
-    // pub const CENTER: Self = Self {
-    //     align_x: 0.0,
-    //     align_y: 0.0,
-    // };
-    // pub const CENTER_RIGHT: Self = Self {
-    //     align_x: 1.0,
-    //     align_y: 0.0,
-    // };
-
-    // pub const BOTTOM_LEFT: Self = Self {
-    //     align_x: -1.0,
-    //     align_y: 1.0,
-    // };
-    // pub const BOTTOM_CENTER: Self = Self {
-    //     align_x: 0.0,
-    //     align_y: 1.0,
-    // };
-    // pub const BOTTOM_RIGHT: Self = Self {
-    //     align_x: 1.0,
-    //     align_y: 1.0,
-    // };
-
-    /// Convert alignment coordinates to offset within available space.
-    ///
-    /// Formula: offset = (available_size - child_size) * (alignment + 1.0) / 2.0
-    ///
-    /// Examples:
-    /// - alignment = -1.0: offset = 0.0 (left/top)
-    /// - alignment = 0.0:  offset = (available - child) / 2.0 (center)
-    /// - alignment = 1.0:  offset = available - child (right/bottom)
-    pub fn along_offset(self, available: Size, child: Size) -> Vec2 {
-        let (factor_x, factor_y) = self.to_normalized();
-
-        Vec2::new(
-            (available.width - child.width) * factor_x,
-            (available.height - child.height) * factor_y,
-        )
+    pub const fn new(h: HAlign, v: VAlign) -> Self {
+        Self {
+            horizontal: h,
+            vertical: v,
+        }
     }
 
-    /// Alternative method to get normalized (0..1) representation.
-    pub fn to_normalized(self) -> (f64, f64) {
-        ((self.align_x + 1.0) / 2.0, (self.align_y + 1.0) / 2.0)
+    /// Calculate the position offset.
+    pub fn along_offset(self, available: Size, child: Size) -> Vec2 {
+        // The center of the available space
+        let center_x = (available.width - child.width) / 2.0;
+        let center_y = (available.height - child.height) / 2.0;
+
+        // Offset from the center based on alignment factors
+        let offset_x =
+            center_x + (self.horizontal.to_factor() * center_x);
+        let offset_y =
+            center_y + (self.vertical.to_factor() * center_y);
+
+        Vec2::new(offset_x, offset_y)
     }
 }
+
 /// Aligns a child node within the available space.
 #[derive(Debug, Clone)]
 struct Align {
@@ -358,7 +343,7 @@ impl LayoutSolver for Horizontal {
 
     fn build(
         &self,
-        node: &RectNode,
+        _node: &RectNode,
         tree: &Rectree,
         positioner: &mut Positioner,
     ) -> Size {
@@ -382,10 +367,7 @@ impl LayoutSolver for Horizontal {
             x_cursor -= self.spacing;
         }
 
-        let height =
-            node.parent_constraint().height.unwrap_or(max_height);
-
-        Size::new(x_cursor, height)
+        Size::new(x_cursor, max_height)
     }
 }
 
@@ -409,7 +391,7 @@ impl LayoutSolver for Vertical {
 
     fn build(
         &self,
-        node: &RectNode,
+        _node: &RectNode,
         tree: &Rectree,
         positioner: &mut Positioner,
     ) -> Size {
@@ -433,10 +415,7 @@ impl LayoutSolver for Vertical {
             y_cursor -= self.spacing;
         }
 
-        let width =
-            node.parent_constraint().width.unwrap_or(max_width);
-
-        Size::new(width, y_cursor)
+        Size::new(max_width, y_cursor)
     }
 }
 
