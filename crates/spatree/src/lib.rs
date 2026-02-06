@@ -141,7 +141,7 @@ impl Spatree {
 
 /// Queries.
 impl Spatree {
-    /// Query for hits for an arbitrary target and hit condition.
+    /// Query for all hits for an arbitrary target.
     pub fn query<T, F>(
         &self,
         target: T,
@@ -194,7 +194,71 @@ impl Spatree {
         hits
     }
 
-    /// Query for rects that contains the given [`Point`].
+    /// Query for a singles hit for an arbitrary target.
+    pub fn query_single<T, H, C>(
+        &self,
+        target: T,
+        hit_condition: H,
+        conflict_resolution: C,
+    ) -> Option<RectId>
+    where
+        H: Fn(&Rect, &T) -> bool,
+        C: Fn(RectId, RectId) -> RectId,
+    {
+        let mut hit = None;
+        // let mut hits = Vec::new();
+
+        if self.nodes.is_empty() {
+            // There's no tree, if there's just one rect, do a hit
+            // test for it.
+            if let Some(rect) = self.rects.first()
+                && hit_condition(rect, &target)
+            {
+                hit = Some(RectId(0));
+            }
+        } else {
+            // Traverse the tree.
+            let mut stack = vec![0];
+
+            while let Some(node_idx) = stack.pop() {
+                let node = self.nodes[node_idx];
+
+                // Skip the tree if it's not a hit.
+                if !hit_condition(&node.rect, &target) {
+                    continue;
+                }
+
+                for child in node.children.iter() {
+                    match child {
+                        NodeId::Internal(child_idx) => {
+                            stack.push(*child_idx)
+                        }
+                        NodeId::Leaf(leaf_idx) => {
+                            if hit_condition(
+                                &self.rects[*leaf_idx],
+                                &target,
+                            ) {
+                                let new_hit = RectId(*leaf_idx);
+                                match &mut hit {
+                                    Some(hit) => {
+                                        *hit = conflict_resolution(
+                                            *hit, new_hit,
+                                        );
+                                    }
+                                    None => hit = Some(new_hit),
+                                }
+                            }
+                        }
+                        NodeId::Invalid => continue,
+                    }
+                }
+            }
+        }
+
+        hit
+    }
+
+    /// Query for all rects that contains the given [`Point`].
     pub fn query_point(&self, point: Point) -> Vec<RectId> {
         self.query(
             point,
@@ -203,12 +267,46 @@ impl Spatree {
         )
     }
 
-    /// Query for rects that overlaps the given [`Rect`].
+    /// Query for all rects that overlaps the given [`Rect`].
     pub fn query_rect(&self, rect: Rect) -> Vec<RectId> {
         self.query(
             rect,
             #[inline(always)]
             |rect, target_rect| rect.overlaps(*target_rect),
+        )
+    }
+
+    /// Query for a single rects that contains the given [`Point`].
+    pub fn query_point_single<C>(
+        &self,
+        point: Point,
+        conflict_resolution: C,
+    ) -> Option<RectId>
+    where
+        C: Fn(RectId, RectId) -> RectId,
+    {
+        self.query_single(
+            point,
+            #[inline(always)]
+            |rect, point| rect.contains(*point),
+            conflict_resolution,
+        )
+    }
+
+    /// Query for a single rects that contains the given [`Point`].
+    pub fn query_rect_single<C>(
+        &self,
+        rect: Rect,
+        conflict_resolution: C,
+    ) -> Option<RectId>
+    where
+        C: Fn(RectId, RectId) -> RectId,
+    {
+        self.query_single(
+            rect,
+            #[inline(always)]
+            |rect, target_rect| rect.overlaps(*target_rect),
+            conflict_resolution,
         )
     }
 }
