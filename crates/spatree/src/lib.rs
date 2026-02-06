@@ -476,14 +476,14 @@ mod tests {
     fn test_hierarchy_structure_and_bounds() {
         let mut tree = Spatree::new();
 
-        // 4 corners of a 100x100 area
-        // TL.
+        // 4 corners of a 100x100 area.
+        // Top left.
         let r1 = Rect::new(0.0, 0.0, 10.0, 10.0);
-        // TR.
+        // Top right.
         let r2 = Rect::new(90.0, 0.0, 100.0, 10.0);
-        // BL.
+        // Bottom left.
         let r3 = Rect::new(0.0, 90.0, 10.0, 100.0);
-        // BR.
+        // Bottom right.
         let r4 = Rect::new(90.0, 90.0, 100.0, 100.0);
 
         tree.push_rect(r1);
@@ -528,10 +528,13 @@ mod tests {
     fn test_query_rect() {
         let mut tree = Spatree::new();
 
-        // Define three distinct areas.
-        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0); // Top-left
-        let r2 = Rect::new(20.0, 0.0, 30.0, 10.0); // Top-right
-        let r3 = Rect::new(0.0, 20.0, 30.0, 30.0); // Bottom wide strip
+        // Define 3 distinct areas.
+        // Top left.
+        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0);
+        // Top right.
+        let r2 = Rect::new(20.0, 0.0, 30.0, 10.0);
+        // Bottom wide strip.
+        let r3 = Rect::new(0.0, 20.0, 30.0, 30.0);
 
         let id1 = tree.push_rect(r1);
         let id2 = tree.push_rect(r2);
@@ -539,13 +542,13 @@ mod tests {
 
         tree.build(|r| r.center());
 
-        // 1. Overlap only r1.
+        // 1. Overlaps only `r1`.
         let q1 = Rect::new(-5.0, -5.0, 5.0, 5.0);
         let hits = tree.query_rect(q1);
         assert_eq!(hits.len(), 1);
         assert!(hits.contains(&id1));
 
-        // 2. Overlap r1 and r2 but not r3.
+        // 2. Overlaps `r1` and `r2` but not `r3`.
         let q2 = Rect::new(5.0, 2.0, 25.0, 8.0);
         let hits = tree.query_rect(q2);
         assert_eq!(hits.len(), 2);
@@ -553,7 +556,7 @@ mod tests {
         assert!(hits.contains(&id2));
         assert!(!hits.contains(&id3));
 
-        // 3. Overlap all three.
+        // 3. Overlaps all 3.
         let q3 = Rect::new(5.0, 5.0, 25.0, 25.0);
         let hits = tree.query_rect(q3);
         assert_eq!(hits.len(), 3);
@@ -626,19 +629,19 @@ mod tests {
 
         tree.build(|r| r.center());
 
-        // 1. Search rect overlaps all 3.
+        // 1. Overlaps all 3.
         let q1 = Rect::new(2.0, 2.0, 8.0, 8.0);
         let hit =
             tree.query_rect_single(q1, stack_conflict_resolution);
         assert_eq!(hit, Some(id2));
 
-        // 2. Search rect overlaps `id0` and `id1`, but misses `id2`.
+        // 2. Overlaps `id0` and `id1`, but misses `id2`.
         let q2 = Rect::new(15.0, 15.0, 25.0, 25.0);
         let hit =
             tree.query_rect_single(q2, stack_conflict_resolution);
         assert_eq!(hit, Some(id1));
 
-        // 3. Search rect overlaps only the largest base `id0`.
+        // 3. Overlaps only the largest base `id0`.
         let q3 = Rect::new(60.0, 60.0, 70.0, 70.0);
         let hit =
             tree.query_rect_single(q3, stack_conflict_resolution);
