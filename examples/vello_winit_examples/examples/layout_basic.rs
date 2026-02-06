@@ -115,7 +115,7 @@ fn main() {
                 },
             );
 
-            WindowRoot {
+            FixedSize {
                 size: demo.window_size,
             }
         },
@@ -132,13 +132,13 @@ fn main() {
     event_loop.run_app(&mut app).unwrap();
 }
 
-/// The root widget that matches the window size.
+/// A widget that forces a specific size that ignore parent constraints.
 #[derive(Debug, Clone)]
-struct WindowRoot {
+struct FixedSize {
     size: Size,
 }
 
-impl LayoutSolver for WindowRoot {
+impl LayoutSolver for FixedSize {
     fn constraint(&self, _parent: Constraint) -> Constraint {
         // Enforce the cached window size as the constraint for children
         Constraint::fixed(self.size.width, self.size.height)
@@ -677,19 +677,20 @@ impl VelloDemo for LayoutDemo {
     fn size_changed(&mut self, size: Size) {
         self.window_size = size;
 
-        // Propagate size change to the WindowRoot widget
-        if let Some(root_id) = self.root_id {
-            if let Some(widget) = self.world.widgets.get_mut(&root_id)
-            {
-                if let Some(root_widget) = (widget.as_mut()
-                    as &mut dyn Any)
-                    .downcast_mut::<WindowRoot>()
-                {
-                    root_widget.size = size;
-                    // Trigger relayout for the root
-                    self.tree.schedule_relayout(root_id);
-                }
-            }
+        // Propagate size change to the root widget.
+        let Some(root_id) = self.root_id else { return };
+
+        let Some(widget) = self.world.widgets.get_mut(&root_id)
+        else {
+            return;
+        };
+
+        if let Some(fixed_widget) = (widget.as_mut() as &mut dyn Any)
+            .downcast_mut::<FixedSize>()
+        {
+            fixed_widget.size = size;
+            // Trigger relayout for the root
+            self.tree.schedule_relayout(root_id);
         }
     }
 
