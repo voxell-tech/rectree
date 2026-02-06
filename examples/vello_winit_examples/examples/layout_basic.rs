@@ -165,56 +165,55 @@ struct Alignment {
     align_y: f64,
 }
 
-// TODO: Move to the other module for reuse and prevent dead_code warning.
-#[allow(dead_code)]
+// TODO: Move to the other module if needed
 impl Alignment {
     /// Create a custom alignment.
-    pub const fn new(x: f64, y: f64) -> Self {
-        Self {
-            align_x: x,
-            align_y: y,
-        }
-    }
+    // pub const fn new(x: f64, y: f64) -> Self {
+    //     Self {
+    //         align_x: x,
+    //         align_y: y,
+    //     }
+    // }
 
     // Predefined alignments
-    pub const TOP_LEFT: Self = Self {
-        align_x: -1.0,
-        align_y: -1.0,
-    };
+    // pub const TOP_LEFT: Self = Self {
+    //     align_x: -1.0,
+    //     align_y: -1.0,
+    // };
     pub const TOP_CENTER: Self = Self {
         align_x: 0.0,
         align_y: -1.0,
     };
-    pub const TOP_RIGHT: Self = Self {
-        align_x: 1.0,
-        align_y: -1.0,
-    };
+    // pub const TOP_RIGHT: Self = Self {
+    //     align_x: 1.0,
+    //     align_y: -1.0,
+    // };
 
-    pub const CENTER_LEFT: Self = Self {
-        align_x: -1.0,
-        align_y: 0.0,
-    };
-    pub const CENTER: Self = Self {
-        align_x: 0.0,
-        align_y: 0.0,
-    };
-    pub const CENTER_RIGHT: Self = Self {
-        align_x: 1.0,
-        align_y: 0.0,
-    };
+    // pub const CENTER_LEFT: Self = Self {
+    //     align_x: -1.0,
+    //     align_y: 0.0,
+    // };
+    // pub const CENTER: Self = Self {
+    //     align_x: 0.0,
+    //     align_y: 0.0,
+    // };
+    // pub const CENTER_RIGHT: Self = Self {
+    //     align_x: 1.0,
+    //     align_y: 0.0,
+    // };
 
-    pub const BOTTOM_LEFT: Self = Self {
-        align_x: -1.0,
-        align_y: 1.0,
-    };
-    pub const BOTTOM_CENTER: Self = Self {
-        align_x: 0.0,
-        align_y: 1.0,
-    };
-    pub const BOTTOM_RIGHT: Self = Self {
-        align_x: 1.0,
-        align_y: 1.0,
-    };
+    // pub const BOTTOM_LEFT: Self = Self {
+    //     align_x: -1.0,
+    //     align_y: 1.0,
+    // };
+    // pub const BOTTOM_CENTER: Self = Self {
+    //     align_x: 0.0,
+    //     align_y: 1.0,
+    // };
+    // pub const BOTTOM_RIGHT: Self = Self {
+    //     align_x: 1.0,
+    //     align_y: 1.0,
+    // };
 
     /// Convert alignment coordinates to offset within available space.
     ///
