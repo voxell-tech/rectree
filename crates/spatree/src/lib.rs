@@ -10,6 +10,10 @@ use alloc::vec;
 use alloc::vec::Vec;
 use kurbo::{Point, Rect};
 
+use crate::morton::{MortonCode, find_split, morton_2d_f64};
+
+pub mod morton;
+
 /// **Spatree** implements a Linear Bounding Volume Hierarchy (LBVH).
 ///
 /// It uses _Morton encoding_ to map 2D spaital coordinates onto a 1D
@@ -141,7 +145,7 @@ impl Spatree {
 
 /// Queries.
 impl Spatree {
-    /// Query for hits for an arbitrary target and hit condition.
+    /// Query for all hits for an arbitrary target.
     pub fn query<T, F>(
         &self,
         target: T,
@@ -194,7 +198,71 @@ impl Spatree {
         hits
     }
 
-    /// Query for rects that contains the given [`Point`].
+    /// Query for a singles hit for an arbitrary target.
+    pub fn query_single<T, H, C>(
+        &self,
+        target: T,
+        hit_condition: H,
+        conflict_resolution: C,
+    ) -> Option<RectId>
+    where
+        H: Fn(&Rect, &T) -> bool,
+        C: Fn(RectId, RectId) -> RectId,
+    {
+        let mut hit = None;
+        // let mut hits = Vec::new();
+
+        if self.nodes.is_empty() {
+            // There's no tree, if there's just one rect, do a hit
+            // test for it.
+            if let Some(rect) = self.rects.first()
+                && hit_condition(rect, &target)
+            {
+                hit = Some(RectId(0));
+            }
+        } else {
+            // Traverse the tree.
+            let mut stack = vec![0];
+
+            while let Some(node_idx) = stack.pop() {
+                let node = self.nodes[node_idx];
+
+                // Skip the tree if it's not a hit.
+                if !hit_condition(&node.rect, &target) {
+                    continue;
+                }
+
+                for child in node.children.iter() {
+                    match child {
+                        NodeId::Internal(child_idx) => {
+                            stack.push(*child_idx)
+                        }
+                        NodeId::Leaf(leaf_idx) => {
+                            if hit_condition(
+                                &self.rects[*leaf_idx],
+                                &target,
+                            ) {
+                                let new_hit = RectId(*leaf_idx);
+                                match &mut hit {
+                                    Some(hit) => {
+                                        *hit = conflict_resolution(
+                                            *hit, new_hit,
+                                        );
+                                    }
+                                    None => hit = Some(new_hit),
+                                }
+                            }
+                        }
+                        NodeId::Invalid => continue,
+                    }
+                }
+            }
+        }
+
+        hit
+    }
+
+    /// Query for all rects that contains the given [`Point`].
     pub fn query_point(&self, point: Point) -> Vec<RectId> {
         self.query(
             point,
@@ -203,12 +271,46 @@ impl Spatree {
         )
     }
 
-    /// Query for rects that overlaps the given [`Rect`].
+    /// Query for all rects that overlaps the given [`Rect`].
     pub fn query_rect(&self, rect: Rect) -> Vec<RectId> {
         self.query(
             rect,
             #[inline(always)]
             |rect, target_rect| rect.overlaps(*target_rect),
+        )
+    }
+
+    /// Query for a single rects that contains the given [`Point`].
+    pub fn query_point_single<C>(
+        &self,
+        point: Point,
+        conflict_resolution: C,
+    ) -> Option<RectId>
+    where
+        C: Fn(RectId, RectId) -> RectId,
+    {
+        self.query_single(
+            point,
+            #[inline(always)]
+            |rect, point| rect.contains(*point),
+            conflict_resolution,
+        )
+    }
+
+    /// Query for a single rects that contains the given [`Point`].
+    pub fn query_rect_single<C>(
+        &self,
+        rect: Rect,
+        conflict_resolution: C,
+    ) -> Option<RectId>
+    where
+        C: Fn(RectId, RectId) -> RectId,
+    {
+        self.query_single(
+            rect,
+            #[inline(always)]
+            |rect, target_rect| rect.overlaps(*target_rect),
+            conflict_resolution,
         )
     }
 }
@@ -244,36 +346,17 @@ pub enum NodeId {
 )]
 pub struct RectId(usize);
 
+impl RectId {
+    pub fn into_inner(self) -> usize {
+        self.0
+    }
+}
+
 impl Deref for RectId {
     type Target = usize;
 
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-/// Stores the Morton code alongside their associated leaf index.
-///
-/// This struct is optimized for ordering based only on
-/// [`Self::code`] without any consideration for [`Self::index`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct MortonCode {
-    pub code: u32,
-    pub index: usize,
-}
-
-impl Ord for MortonCode {
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        self.code.cmp(&other.code)
-    }
-}
-
-impl PartialOrd for MortonCode {
-    fn partial_cmp(
-        &self,
-        other: &Self,
-    ) -> Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
     }
 }
 
@@ -356,80 +439,6 @@ pub fn generate_hierarchy(codes: &[MortonCode]) -> Vec<Node> {
     internal_nodes
 }
 
-/// `x` & `y` must be within (and will be clamped into)
-/// the `0..=1` range.
-pub fn morton_2d_f64(x: f64, y: f64) -> u32 {
-    const MAX: f64 = 65535.0;
-    let x = (x.clamp(0.0, 1.0) * MAX) as u16;
-    let y = (y.clamp(0.0, 1.0) * MAX) as u16;
-
-    morton_2d(x, y)
-}
-
-/// Combine 2 [`u16`] integers into a [`u32`] morton code.
-pub fn morton_2d(x: u16, y: u16) -> u32 {
-    fn expand(mut v: u32) -> u32 {
-        v = (v | (v << 8)) & 0x00FF00FF;
-        v = (v | (v << 4)) & 0x0F0F0F0F;
-        v = (v | (v << 2)) & 0x33333333;
-        v = (v | (v << 1)) & 0x55555555;
-        v
-    }
-    expand(x as u32) | (expand(y as u32) << 1)
-}
-
-/// Find the split point for a range of sorted Morton codes.
-///
-/// Locate the position where the shared bit prefix changes and
-/// return the index used to divide the range into two clusters.
-pub const fn find_split(
-    morton_codes: &[MortonCode],
-    first: usize,
-    last: usize,
-) -> usize {
-    let first_code = morton_codes[first].code;
-    let last_code = morton_codes[last].code;
-    // Split the range in the middle for identical Morton codes.
-    if first_code == last_code {
-        return (first + last) >> 1;
-    };
-
-    let common_prefix = calc_common_prefix(first_code, last_code);
-
-    // Use binary search to find where the next bit differs.
-    // Specifically, we are looking for the highest object that
-    // shares more than `common_prefix` bits with the first one.
-
-    // Initial guess.
-    let mut split = first;
-    let mut step = last - first;
-    while step > 1 {
-        // Exponential decrease.
-        step = (step + 1) >> 1;
-        // Proposed new position.
-        let new_split = split + step;
-
-        if new_split < last {
-            let split_code = morton_codes[new_split].code;
-            let split_prefix =
-                calc_common_prefix(first_code, split_code);
-
-            if split_prefix > common_prefix {
-                // Accept proposal.
-                split = new_split
-            };
-        }
-    }
-
-    split
-}
-
-/// Measures the common prefix of two morton codes.
-#[inline]
-pub const fn calc_common_prefix(code_a: u32, code_b: u32) -> u32 {
-    (code_a ^ code_b).leading_zeros()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,7 +467,6 @@ mod tests {
         // Single item means N-1 = 0 internal nodes.
         assert!(tree.nodes.is_empty());
 
-        // Hit
         let hits = tree.query_point(Point::new(5.0, 5.0));
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0], id);
@@ -468,11 +476,15 @@ mod tests {
     fn test_hierarchy_structure_and_bounds() {
         let mut tree = Spatree::new();
 
-        // 4 corners of a 100x100 area
-        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0); // TL
-        let r2 = Rect::new(90.0, 0.0, 100.0, 10.0); // TR
-        let r3 = Rect::new(0.0, 90.0, 10.0, 100.0); // BL
-        let r4 = Rect::new(90.0, 90.0, 100.0, 100.0); // BR
+        // 4 corners of a 100x100 area.
+        // Top left.
+        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0);
+        // Top right.
+        let r2 = Rect::new(90.0, 0.0, 100.0, 10.0);
+        // Bottom left.
+        let r3 = Rect::new(0.0, 90.0, 10.0, 100.0);
+        // Bottom right.
+        let r4 = Rect::new(90.0, 90.0, 100.0, 100.0);
 
         tree.push_rect(r1);
         tree.push_rect(r2);
@@ -505,7 +517,7 @@ mod tests {
 
         tree.build(|r| r.center());
 
-        // Point inside intersection
+        // Point inside intersection.
         let hits = tree.query_point(Point::new(25.0, 25.0));
         assert_eq!(hits.len(), 2);
         assert!(hits.contains(&id1));
@@ -516,10 +528,13 @@ mod tests {
     fn test_query_rect() {
         let mut tree = Spatree::new();
 
-        // Define three distinct areas
-        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0); // Top-left
-        let r2 = Rect::new(20.0, 0.0, 30.0, 10.0); // Top-right
-        let r3 = Rect::new(0.0, 20.0, 30.0, 30.0); // Bottom wide strip
+        // Define 3 distinct areas.
+        // Top left.
+        let r1 = Rect::new(0.0, 0.0, 10.0, 10.0);
+        // Top right.
+        let r2 = Rect::new(20.0, 0.0, 30.0, 10.0);
+        // Bottom wide strip.
+        let r3 = Rect::new(0.0, 20.0, 30.0, 30.0);
 
         let id1 = tree.push_rect(r1);
         let id2 = tree.push_rect(r2);
@@ -527,13 +542,13 @@ mod tests {
 
         tree.build(|r| r.center());
 
-        // 1. Overlap only r1
+        // 1. Overlaps only `r1`.
         let q1 = Rect::new(-5.0, -5.0, 5.0, 5.0);
         let hits = tree.query_rect(q1);
         assert_eq!(hits.len(), 1);
         assert!(hits.contains(&id1));
 
-        // 2. Overlap r1 and r2 but not r3
+        // 2. Overlaps `r1` and `r2` but not `r3`.
         let q2 = Rect::new(5.0, 2.0, 25.0, 8.0);
         let hits = tree.query_rect(q2);
         assert_eq!(hits.len(), 2);
@@ -541,8 +556,7 @@ mod tests {
         assert!(hits.contains(&id2));
         assert!(!hits.contains(&id3));
 
-        // 3. Overlap all three
-        // This rectangle sits in the center and touches all areas
+        // 3. Overlaps all 3.
         let q3 = Rect::new(5.0, 5.0, 25.0, 25.0);
         let hits = tree.query_rect(q3);
         assert_eq!(hits.len(), 3);
@@ -556,14 +570,87 @@ mod tests {
         assert!(hits.is_empty());
     }
 
+    /// Largest index win (simulating a stack/z-order).
+    #[inline(always)]
+    fn stack_conflict_resolution(a: RectId, b: RectId) -> RectId {
+        if a > b { a } else { b }
+    }
+
     #[test]
-    fn test_morton_logic_consistency() {
-        // Ensure x and y bits are interleaved correctly.
-        // x=1 (01), y=0 (00) -> 01
-        assert_eq!(morton_2d(1, 0), 1);
-        // x=0 (00), y=1 (01) -> 10 (binary) -> 2
-        assert_eq!(morton_2d(0, 1), 2);
-        // x=1 (01), y=1 (01) -> 11 (binary) -> 3
-        assert_eq!(morton_2d(1, 1), 3);
+    fn test_query_point_single() {
+        let mut tree = Spatree::new();
+
+        // Largest (lowest).
+        let id0 = tree.push_rect(Rect::new(0.0, 0.0, 100.0, 100.0));
+        // Middle (center).
+        let id1 = tree.push_rect(Rect::new(0.0, 0.0, 50.0, 50.0));
+        // Smallest (top).
+        let id2 = tree.push_rect(Rect::new(0.0, 0.0, 10.0, 10.0));
+
+        assert!(id0 < id1 && id1 < id2, "Ids should be incremented!");
+
+        tree.build(|r| r.center());
+
+        // 1. Point hits all 3.
+        let p1 = Point::new(5.0, 5.0);
+        let hit =
+            tree.query_point_single(p1, stack_conflict_resolution);
+        assert_eq!(hit, Some(id2));
+
+        // 2. Point hits `id0` and `id1`, but misses the tiny `id2`.
+        let p2 = Point::new(20.0, 20.0);
+        let hit =
+            tree.query_point_single(p2, stack_conflict_resolution);
+        assert_eq!(hit, Some(id1));
+
+        // 3. Point hits only the large base `id0`.
+        let p3 = Point::new(75.0, 75.0);
+        let hit =
+            tree.query_point_single(p3, stack_conflict_resolution);
+        assert_eq!(hit, Some(id0));
+
+        // 4. Complete miss.
+        let p4 = Point::new(150.0, 150.0);
+        let hit =
+            tree.query_point_single(p4, stack_conflict_resolution);
+        assert!(hit.is_none());
+    }
+
+    #[test]
+    fn test_query_rect_single() {
+        let mut tree = Spatree::new();
+
+        // Largest (lowest).
+        let id0 = tree.push_rect(Rect::new(0.0, 0.0, 100.0, 100.0));
+        // Middle (center).
+        let id1 = tree.push_rect(Rect::new(0.0, 0.0, 50.0, 50.0));
+        // Smallest (top).
+        let id2 = tree.push_rect(Rect::new(0.0, 0.0, 10.0, 10.0));
+
+        tree.build(|r| r.center());
+
+        // 1. Overlaps all 3.
+        let q1 = Rect::new(2.0, 2.0, 8.0, 8.0);
+        let hit =
+            tree.query_rect_single(q1, stack_conflict_resolution);
+        assert_eq!(hit, Some(id2));
+
+        // 2. Overlaps `id0` and `id1`, but misses `id2`.
+        let q2 = Rect::new(15.0, 15.0, 25.0, 25.0);
+        let hit =
+            tree.query_rect_single(q2, stack_conflict_resolution);
+        assert_eq!(hit, Some(id1));
+
+        // 3. Overlaps only the largest base `id0`.
+        let q3 = Rect::new(60.0, 60.0, 70.0, 70.0);
+        let hit =
+            tree.query_rect_single(q3, stack_conflict_resolution);
+        assert_eq!(hit, Some(id0));
+
+        // 4. Complete miss.
+        let q4 = Rect::new(200.0, 200.0, 210.0, 210.0);
+        let hit =
+            tree.query_rect_single(q4, stack_conflict_resolution);
+        assert!(hit.is_none());
     }
 }
