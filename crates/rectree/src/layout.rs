@@ -159,28 +159,6 @@ impl Rectree {
             }
         }
     }
-    /// Sets the parent constraint for all root nodes.
-    pub fn set_root_constraint(&mut self, constraint: Constraint) {
-        let root_ids: Vec<NodeId> =
-            self.root_ids.iter().copied().collect();
-
-        for root_id in root_ids {
-            match self.nodes.get_mut(&root_id) {
-                Some(node)
-                    if node.parent_constraint != constraint =>
-                {
-                    node.parent_constraint = constraint;
-                    self.schedule_relayout(root_id);
-                }
-                _ => {}
-            }
-        }
-    }
-
-    /// Set root constraint from width and height.
-    pub fn set_root_size(&mut self, width: f64, height: f64) {
-        self.set_root_constraint(Constraint::fixed(width, height));
-    }
 }
 
 /// Provides access to layout solvers associated with nodes.

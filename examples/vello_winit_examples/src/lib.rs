@@ -1,3 +1,4 @@
+use kurbo::Size;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use vello::peniko::Color;
@@ -7,7 +8,7 @@ use vello::{
     AaConfig, RenderParams, Renderer, RendererOptions, Scene,
 };
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalSize, PhysicalSize};
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
@@ -15,13 +16,8 @@ use winit::window::Window;
 pub trait VelloDemo {
     fn window_title(&self) -> &'static str;
     fn initial_logical_size(&self) -> (f64, f64);
-    fn rebuild_scene(
-        &mut self,
-        scene: &mut Scene,
-        width: f64,
-        height: f64,
-        scale_factor: f64,
-    );
+    fn size_changed(&mut self, size: Size);
+    fn rebuild_scene(&mut self, scene: &mut Scene, scale_factor: f64);
 }
 
 pub struct VelloWinitApp<'s, D: VelloDemo> {
@@ -79,15 +75,7 @@ impl<'s, D: VelloDemo> VelloWinitApp<'s, D> {
             );
         }
 
-        let width = size.width as f64 / scale_factor;
-        let height = size.height as f64 / scale_factor;
-
-        self.demo.rebuild_scene(
-            &mut self.scene,
-            width,
-            height,
-            scale_factor,
-        );
+        self.demo.rebuild_scene(&mut self.scene, scale_factor);
 
         let dev = &self.context.devices[surface.dev_id];
         let texture = match surface.surface.get_current_texture() {
@@ -143,6 +131,18 @@ impl<'s, D: VelloDemo> VelloWinitApp<'s, D> {
         dev.queue.submit([enc.finish()]);
         texture.present();
     }
+
+    fn handle_resize(
+        &mut self,
+        scale_factor: f64,
+        size: PhysicalSize<u32>,
+    ) {
+        let logical_width = size.width as f64 / scale_factor;
+        let logical_height = size.height as f64 / scale_factor;
+
+        self.demo
+            .size_changed(Size::new(logical_width, logical_height));
+    }
 }
 
 impl<D: VelloDemo> ApplicationHandler for VelloWinitApp<'_, D> {
@@ -159,6 +159,11 @@ impl<D: VelloDemo> ApplicationHandler for VelloWinitApp<'_, D> {
                 .with_title(self.demo.window_title());
             Arc::new(event_loop.create_window(attr).unwrap())
         });
+
+        self.handle_resize(
+            window.scale_factor(),
+            window.inner_size(),
+        );
 
         let size = window.inner_size();
         let surface_future = self.context.create_surface(
@@ -211,7 +216,16 @@ impl<D: VelloDemo> ApplicationHandler for VelloWinitApp<'_, D> {
     ) {
         match event {
             WindowEvent::CloseRequested => el.exit(),
-            WindowEvent::Resized(_) => {
+            WindowEvent::Resized(size) => {
+                let scale_factor = match &self.state {
+                    RenderState::Active { window, .. } => {
+                        window.scale_factor()
+                    }
+                    _ => return,
+                };
+
+                self.handle_resize(scale_factor, size);
+
                 self.render();
             }
             WindowEvent::RedrawRequested => {
