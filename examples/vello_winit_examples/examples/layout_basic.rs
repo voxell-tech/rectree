@@ -9,120 +9,68 @@ use rectree::node::RectNode;
 use rectree::{NodeId, Rectree};
 use vello::Scene;
 use vello::peniko::Color;
+use vello::peniko::color::palette::css;
 use vello_winit_examples::{VelloDemo, VelloWinitApp};
 use winit::event_loop::EventLoop;
-
-const AREA: f64 = 2500.0;
 
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let mut demo = LayoutDemo::new();
 
-    let root_id = demo.add_widget(
-        None,
-        Color::TRANSPARENT,
-        |demo, root_id| {
-            demo.add_widget(
-                Some(root_id),
-                Color::TRANSPARENT,
-                |demo, root_id| {
-                    // Create a horizontal stack container.
-                    let content = demo.add_widget(
-                        Some(root_id),
-                        Color::TRANSPARENT,
-                        |demo, root_id| Horizontal {
-                            spacing: 20.0,
-                            children: vec![
-                                demo.add_widget(
-                                    Some(root_id),
-                                    Color::from_rgb8(200, 200, 10),
-                                    |demo, id| VerticalCenteredList {
-                                        padding: 20.0,
-                                        children: (0..5)
-                                            .map(|_i| {
-                                                let area = FixedArea {
-                                                    use_width: false,
-                                                    target_area: AREA,
-                                                };
+    let create_column = |b: &mut Builder| {
+        Vertical::new(10.0).show(b, |b| {
+            vec![
+                b.add_widget_with_color(css::RED, |_| {
+                    FixedHeightRect(40.0)
+                }),
+                b.add_widget_with_color(css::ORANGE, |_| {
+                    FixedHeightRect(60.0)
+                }),
+                b.add_widget_with_color(css::YELLOW, |_| {
+                    FixedHeightRect(80.0)
+                }),
+                b.add_widget_with_color(css::GREEN, |_| {
+                    FixedHeightRect(100.0)
+                }),
+                b.add_widget_with_color(css::BLUE, |_| {
+                    FixedHeightRect(80.0)
+                }),
+                b.add_widget_with_color(css::VIOLET, |_| {
+                    FixedHeightRect(60.0)
+                }),
+                b.add_widget_with_color(css::PURPLE, |_| {
+                    FixedHeightRect(40.0)
+                }),
+            ]
+        })
+    };
 
-                                                demo.add_widget(
-                                                    Some(id),
-                                                    Color::from_rgb8(10, 200, 200),
-                                                    |_, _| area,
-                                                )
-                                            })
-                                            .collect(),
-                                    },
-                                ),
-                                demo.add_widget(
-                                    Some(root_id),
-                                    // Visualize padding container with white background
-                                    Color::WHITE,
-                                    // Create a vertical stack of fixed height rectangles
-                                    |demo, id| {
-                                        let child = demo.add_widget(
-                                            Some(id),
-                                            Color::TRANSPARENT,
-                                            |demo, id| Vertical {
-                                                spacing: 20.0,
-                                                children: vec![
-                                                    demo.add_widget(
-                                                        Some(id),
-                                                        Color::from_rgb8(255, 100, 100),
-                                                        |_, _| FixedHeightRect { height: 50.0 },
-                                                    ),
-                                                    // Margin example using Padding widget
-                                                    demo.add_widget(
-                                                        Some(id),
-                                                        Color::TRANSPARENT,
-                                                        |demo, parent_id| Padding {
-                                                            left: 0.0,
-                                                            right: 0.0,
-                                                            top: 30.0,
-                                                            bottom: 30.0,
-                                                            child: demo.add_widget(
-                                                                Some(parent_id),
-                                                                Color::from_rgb8(100, 255, 100),
-                                                                |_, _| FixedHeightRect {
-                                                                    height: 100.0,
-                                                                },
-                                                            ),
-                                                        },
-                                                    ),
-                                                    demo.add_widget(
-                                                        Some(id),
-                                                        Color::from_rgb8(100, 100, 255),
-                                                        |_, _| FixedHeightRect { height: 65.0 },
-                                                    ),
-                                                ],
-                                            },
-                                        );
-                                        // Wrap the vertical stack in a padding container
-                                        Padding {
-                                            left: 10.0,
-                                            right: 10.0,
-                                            top: 20.0,
-                                            bottom: 20.0,
-                                            child,
-                                        }
-                                    },
-                                ),
-                            ],
-                        },
-                    );
-                    // Align the content in the top center of the window
-                    Align::new(
-                        Alignment::new(HAlign::Center, VAlign::Top),
-                        content
-                    )
-                },
-            );
+    let root_id = demo.add_root_widget(Color::TRANSPARENT, |b| {
+        Padding::all(20.0).show(b, |b| {
+            Vertical::new(20.0).show(b, |b| {
+                vec![
+                    Horizontal::new(50.0).show(b, |b| {
+                        vec![
+                            create_column(b),
+                            create_column(b),
+                            create_column(b),
+                        ]
+                    }),
+                    b.add_widget_with_color(css::CYAN, |_| {
+                        FixedWidthRect(50.0)
+                    }),
+                    b.add_widget_with_color(css::SALMON, |_| {
+                        FixedWidthRect(200.0)
+                    }),
+                    b.add_widget_with_color(css::RED, |_| {
+                        FixedWidthRect(800.0)
+                    }),
+                ]
+            })
+        });
 
-            FixedSize {
-                size: demo.window_size,
-            }
-        },
-    );
+        FixedSizeWidget(b.demo.window_size)
+    });
 
     // Store the root ID for future reference.
     demo.root_id = Some(root_id);
@@ -135,202 +83,246 @@ fn main() {
     event_loop.run_app(&mut app).unwrap();
 }
 
-/// A widget that forces a specific size that ignore parent constraints.
-#[derive(Debug, Clone)]
-struct FixedSize {
-    size: Size,
+pub struct World {
+    widgets: HashMap<NodeId, Box<dyn Widget>>,
+    node_colors: HashMap<NodeId, Color>,
 }
 
-impl LayoutSolver for FixedSize {
-    fn constraint(&self, _parent: Constraint) -> Constraint {
-        // Enforce the cached window size as the constraint for children
-        Constraint::fixed(self.size.width, self.size.height)
-    }
-
-    fn build(
-        &self,
-        _node: &RectNode,
-        _tree: &Rectree,
-        _positioner: &mut Positioner,
-    ) -> Size {
-        // Root always takes the full window size
-        self.size
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HAlign {
-    Left,
-    Center,
-    Right,
-}
-
-impl HAlign {
-    pub fn to_factor(self) -> f64 {
-        match self {
-            HAlign::Left => -1.0,
-            HAlign::Center => 0.0,
-            HAlign::Right => 1.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VAlign {
-    Top,
-    Horizon,
-    Bottom,
-}
-
-impl VAlign {
-    pub fn to_factor(self) -> f64 {
-        match self {
-            VAlign::Top => -1.0,
-            VAlign::Horizon => 0.0,
-            VAlign::Bottom => 1.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct Alignment {
-    horizontal: HAlign,
-    vertical: VAlign,
-}
-
-impl Alignment {
-    pub const fn new(h: HAlign, v: VAlign) -> Self {
+impl World {
+    fn new() -> Self {
         Self {
-            horizontal: h,
-            vertical: v,
+            widgets: HashMap::new(),
+            node_colors: HashMap::new(),
+        }
+    }
+}
+
+impl LayoutWorld for World {
+    fn get_solver(&self, id: &NodeId) -> &dyn LayoutSolver {
+        &**self.widgets.get(id).unwrap()
+    }
+}
+
+pub trait Widget: LayoutSolver + Any {}
+
+impl<T> Widget for T where T: LayoutSolver + Any {}
+
+pub struct LayoutDemo {
+    tree: Rectree,
+    world: World,
+    window_size: Size,
+    root_id: Option<NodeId>,
+}
+
+pub struct Builder<'a> {
+    pub demo: &'a mut LayoutDemo,
+    pub parent_id: NodeId,
+}
+
+impl Builder<'_> {
+    pub fn add_widget_impl<W: Widget + 'static>(
+        &mut self,
+        color: Option<Color>,
+        add_content: impl FnOnce(&mut Builder) -> W,
+    ) -> NodeId {
+        let node = RectNode::new().with_parent(self.parent_id);
+        let parent_id = self.demo.tree.insert(node);
+
+        let w = Box::new(add_content(&mut Builder {
+            demo: self.demo,
+            parent_id,
+        }));
+        self.demo.world.widgets.insert(parent_id, w);
+        if let Some(color) = color {
+            self.demo.world.node_colors.insert(parent_id, color);
+        }
+
+        parent_id
+    }
+
+    pub fn add_widget<W: Widget + 'static>(
+        &mut self,
+        add_content: impl FnOnce(&mut Builder) -> W,
+    ) -> NodeId {
+        self.add_widget_impl(None, add_content)
+    }
+
+    pub fn add_widget_with_color<W: Widget + 'static>(
+        &mut self,
+        color: Color,
+        add_content: impl FnOnce(&mut Builder) -> W,
+    ) -> NodeId {
+        self.add_widget_impl(Some(color), add_content)
+    }
+}
+
+impl LayoutDemo {
+    pub fn new() -> Self {
+        Self {
+            tree: Rectree::new(),
+            world: World::new(),
+            window_size: Size::new(800.0, 600.0),
+            root_id: None,
         }
     }
 
-    /// Calculate the position offset.
-    pub fn along_offset(self, available: Size, child: Size) -> Vec2 {
-        // The center of the available space
-        let center_x = (available.width - child.width) / 2.0;
-        let center_y = (available.height - child.height) / 2.0;
+    pub fn add_root_widget<W: Widget + 'static>(
+        &mut self,
+        color: Color,
+        add_content: impl FnOnce(&mut Builder) -> W,
+    ) -> NodeId {
+        let node = RectNode::new();
+        let parent_id = self.tree.insert(node);
 
-        // Offset from the center based on alignment factors
-        let offset_x =
-            center_x + (self.horizontal.to_factor() * center_x);
-        let offset_y =
-            center_y + (self.vertical.to_factor() * center_y);
+        let w = Box::new(add_content(&mut Builder {
+            demo: self,
+            parent_id,
+        }));
+        self.world.widgets.insert(parent_id, w);
+        self.world.node_colors.insert(parent_id, color);
 
-        Vec2::new(offset_x, offset_y)
+        parent_id
+    }
+
+    fn draw_tree(&self, scene: &mut Scene, transform: Affine) {
+        // Start traversal from the root IDs provided by the tree.
+        for root_id in self.tree.root_ids() {
+            let mut stack = vec![*root_id];
+
+            while let Some(node_id) = stack.pop() {
+                // Get node from tree.
+                let node = self.tree.get(&node_id);
+
+                // Get world_translation.
+                let world_pos = node.world_translation();
+
+                // Reconstruct rect from world pos and size.
+                let world_rect = Rect::from_origin_size(
+                    world_pos.to_point(),
+                    node.size(),
+                );
+
+                // Fetch node color.
+                let color = self.world.node_colors.get(&node_id);
+
+                if let Some(color) = color {
+                    scene.fill(
+                        vello::peniko::Fill::NonZero,
+                        transform,
+                        color,
+                        None,
+                        &world_rect,
+                    );
+                }
+
+                scene.stroke(
+                    &Stroke::new(2.0),
+                    transform,
+                    Color::WHITE,
+                    None,
+                    &world_rect,
+                );
+
+                // Origin markers.
+                let origin = Circle::new(world_rect.origin(), 5.0);
+
+                scene.fill(
+                    vello::peniko::Fill::NonZero,
+                    transform,
+                    css::RED,
+                    None,
+                    &origin,
+                );
+
+                // Traverse to children.
+                for child_id in node.children().iter() {
+                    stack.push(*child_id);
+                }
+            }
+        }
     }
 }
 
-/// Aligns a child node within the available space.
-#[derive(Debug, Clone)]
-struct Align {
-    alignment: Alignment,
-    child: NodeId,
-}
-
-impl Align {
-    fn new(alignment: Alignment, child: NodeId) -> Self {
-        Self { alignment, child }
+impl Default for LayoutDemo {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl LayoutSolver for Align {
-    fn constraint(&self, _parent: Constraint) -> Constraint {
-        Constraint {
-            width: None,
-            height: None,
+impl VelloDemo for LayoutDemo {
+    fn window_title(&self) -> &'static str {
+        "Layout Showcase"
+    }
+
+    fn initial_logical_size(&self) -> (f64, f64) {
+        (self.window_size.width, self.window_size.height)
+    }
+
+    fn size_changed(&mut self, size: Size) {
+        self.window_size = size;
+
+        // Propagate size change to the root widget.
+        let Some(root_id) = self.root_id else { return };
+
+        let Some(widget) = self.world.widgets.get_mut(&root_id)
+        else {
+            return;
+        };
+
+        if let Some(fixed_widget) = (widget.as_mut() as &mut dyn Any)
+            .downcast_mut::<FixedSizeWidget>()
+        {
+            fixed_widget.0 = size;
+            // Trigger relayout for the root
+            self.tree.schedule_relayout(root_id);
         }
     }
 
-    fn build(
-        &self,
-        node: &RectNode,
-        tree: &Rectree,
-        positioner: &mut Positioner,
-    ) -> Size {
-        let child_node = tree.get(&self.child);
-        let child_size = child_node.size();
+    fn rebuild_scene(
+        &mut self,
+        scene: &mut Scene,
+        _scale_factor: f64,
+    ) {
+        // Perform layouting.
+        self.tree.layout(&self.world);
 
-        // Determine available space
-        let available_width = node
-            .parent_constraint()
-            .width
-            .unwrap_or(child_size.width);
-        let available_height = node
-            .parent_constraint()
-            .height
-            .unwrap_or(child_size.height);
-
-        let available_size =
-            Size::new(available_width, available_height);
-
-        let offset =
-            self.alignment.along_offset(available_size, child_size);
-        positioner.set(self.child, offset);
-
-        available_size
+        self.draw_tree(scene, Affine::IDENTITY);
     }
 }
 
-/// A container widget that applies specific padding to each side.
+// Below are some demo widgets to demonstrate how a UI library could
+// potentially use `rectree` as a backend!
+
+/// [`HorizontalWidget`] builder.
 #[derive(Debug, Clone)]
-struct Padding {
-    left: f64,
-    top: f64,
-    right: f64,
-    bottom: f64,
-    child: NodeId,
+pub struct Horizontal {
+    pub spacing: f64,
 }
-impl LayoutSolver for Padding {
-    fn constraint(
-        &self,
-        parent_constraint: Constraint,
-    ) -> Constraint {
-        Constraint {
-            // Subtract horizontal padding from width
-            width: parent_constraint
-                .width
-                .map(|w| (w - (self.left + self.right)).max(0.0)),
-            // Subtract vertical padding from height
-            height: parent_constraint
-                .height
-                .map(|h| (h - (self.top + self.bottom)).max(0.0)),
-        }
+
+impl Horizontal {
+    pub fn new(spacing: f64) -> Self {
+        Self { spacing }
     }
-    /// Determines the final size and position of the padding widget and its child.
-    ///
-    /// Retrieves the child's final calculated size.
-    /// Offsets the child's position by the padding amount.
-    /// Returns the total size of this widget,
-    /// which includes the child's size plus the padding on all sides.
-    fn build(
-        &self,
-        _node: &RectNode,
-        tree: &Rectree,
-        positioner: &mut Positioner,
-    ) -> Size {
-        let child_node = tree.get(&self.child);
-        let child_size = child_node.size();
-
-        // Position the child with the specified padding offsets
-        positioner.set(self.child, Vec2::new(self.left, self.top));
-
-        Size::new(
-            child_size.width + self.left + self.right,
-            child_size.height + self.top + self.bottom,
-        )
+    pub fn show(
+        self,
+        builder: &mut Builder,
+        add_content: impl FnOnce(&mut Builder) -> Vec<NodeId>,
+    ) -> NodeId {
+        builder.add_widget(|b| HorizontalWidget {
+            style: self,
+            children: add_content(b),
+        })
     }
 }
 
-// Horizontal layout widget
+// Horizontal layout widget.
 #[derive(Debug, Clone)]
-struct Horizontal {
-    spacing: f64,
-    children: Vec<NodeId>,
+pub struct HorizontalWidget {
+    pub style: Horizontal,
+    pub children: Vec<NodeId>,
 }
 
-impl LayoutSolver for Horizontal {
+impl LayoutSolver for HorizontalWidget {
     fn constraint(
         &self,
         parent_constraint: Constraint,
@@ -355,7 +347,7 @@ impl LayoutSolver for Horizontal {
             let child_size = child_node.size();
 
             positioner.set(*id, Vec2::new(x_cursor, 0.0));
-            x_cursor += child_size.width + self.spacing;
+            x_cursor += child_size.width + self.style.spacing;
 
             // Track the tallest child
             if child_size.height > max_height {
@@ -364,21 +356,43 @@ impl LayoutSolver for Horizontal {
         }
         // Remove the last added spacing
         if !self.children.is_empty() {
-            x_cursor -= self.spacing;
+            x_cursor -= self.style.spacing;
         }
 
         Size::new(x_cursor, max_height)
     }
 }
 
-// Vertical layout widget
+/// [`VerticalWidget`] builder.
 #[derive(Debug, Clone)]
-struct Vertical {
-    spacing: f64,
-    children: Vec<NodeId>,
+pub struct Vertical {
+    pub spacing: f64,
 }
 
-impl LayoutSolver for Vertical {
+impl Vertical {
+    pub fn new(spacing: f64) -> Self {
+        Self { spacing }
+    }
+    pub fn show(
+        self,
+        builder: &mut Builder,
+        add_content: impl FnOnce(&mut Builder) -> Vec<NodeId>,
+    ) -> NodeId {
+        builder.add_widget(|b| VerticalWidget {
+            style: self,
+            children: add_content(b),
+        })
+    }
+}
+
+// Vertical layout widget.
+#[derive(Debug, Clone)]
+pub struct VerticalWidget {
+    pub style: Vertical,
+    pub children: Vec<NodeId>,
+}
+
+impl LayoutSolver for VerticalWidget {
     fn constraint(
         &self,
         parent_constraint: Constraint,
@@ -404,7 +418,7 @@ impl LayoutSolver for Vertical {
 
             positioner.set(*id, Vec2::new(0.0, y_cursor));
 
-            y_cursor += child_size.height + self.spacing;
+            y_cursor += child_size.height + self.style.spacing;
             // Track the widest child
             if child_size.width > max_width {
                 max_width = child_size.width;
@@ -412,17 +426,124 @@ impl LayoutSolver for Vertical {
         }
         // Remove the last added spacing
         if !self.children.is_empty() {
-            y_cursor -= self.spacing;
+            y_cursor -= self.style.spacing;
         }
 
         Size::new(max_width, y_cursor)
     }
 }
 
+/// [`PaddingWidget`] builder.
 #[derive(Debug, Clone, Copy)]
-struct FixedHeightRect {
-    height: f64,
+pub struct Padding {
+    pub left: f64,
+    pub right: f64,
+    pub top: f64,
+    pub bottom: f64,
 }
+
+impl Padding {
+    fn all(padding: f64) -> Self {
+        Self {
+            left: padding,
+            right: padding,
+            top: padding,
+            bottom: padding,
+        }
+    }
+
+    fn show(
+        self,
+        builder: &mut Builder,
+        add_content: impl FnOnce(&mut Builder) -> NodeId,
+    ) -> NodeId {
+        builder.add_widget(|b| PaddingWidget {
+            style: self,
+            child: add_content(b),
+        })
+    }
+}
+
+/// A container widget that applies specific padding to each side.
+#[derive(Debug)]
+pub struct PaddingWidget {
+    pub style: Padding,
+    pub child: NodeId,
+}
+
+impl LayoutSolver for PaddingWidget {
+    fn constraint(
+        &self,
+        parent_constraint: Constraint,
+    ) -> Constraint {
+        let Padding {
+            left,
+            right,
+            top,
+            bottom,
+        } = self.style;
+
+        Constraint {
+            // Subtract horizontal padding from width
+            width: parent_constraint
+                .width
+                .map(|w| (w - (left + right)).max(0.0)),
+            // Subtract vertical padding from height
+            height: parent_constraint
+                .height
+                .map(|h| (h - (top + bottom)).max(0.0)),
+        }
+    }
+
+    /// Determines the final size and position of the padding widget and its child.
+    ///
+    /// Retrieves the child's final calculated size.
+    /// Offsets the child's position by the padding amount.
+    /// Returns the total size of this widget,
+    /// which includes the child's size plus the padding on all sides.
+    fn build(
+        &self,
+        _node: &RectNode,
+        tree: &Rectree,
+        positioner: &mut Positioner,
+    ) -> Size {
+        let Padding {
+            left,
+            right,
+            top,
+            bottom,
+        } = self.style;
+
+        let child_node = tree.get(&self.child);
+        let child_size = child_node.size();
+
+        // Position the child with the specified padding offsets
+        positioner.set(self.child, Vec2::new(left, top));
+
+        Size::new(
+            child_size.width + left + right,
+            child_size.height + top + bottom,
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FixedWidthRect(pub f64);
+
+impl LayoutSolver for FixedWidthRect {
+    fn build(
+        &self,
+        node: &RectNode,
+        _: &Rectree,
+        _: &mut Positioner,
+    ) -> Size {
+        let height = node.parent_constraint().height.unwrap_or(200.0);
+        Size::new(self.0, height)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct FixedHeightRect(pub f64);
 
 impl LayoutSolver for FixedHeightRect {
     fn build(
@@ -432,283 +553,26 @@ impl LayoutSolver for FixedHeightRect {
         _: &mut Positioner,
     ) -> Size {
         let width = node.parent_constraint().width.unwrap_or(200.0);
-        Size::new(width, self.height)
+        Size::new(width, self.0)
     }
 }
 
-struct World {
-    widgets: HashMap<NodeId, Box<dyn Widget>>,
-    node_colors: HashMap<NodeId, Color>,
-}
-
-impl World {
-    pub fn new() -> Self {
-        Self {
-            widgets: HashMap::new(),
-            node_colors: HashMap::new(),
-        }
-    }
-}
-
-impl LayoutWorld for World {
-    fn get_solver(&self, id: &NodeId) -> &dyn LayoutSolver {
-        &**self.widgets.get(id).unwrap()
-    }
-}
-
+/// A widget that forces a specific size that ignore parent constraints.
 #[derive(Debug, Clone)]
-struct VerticalCenteredList {
-    padding: f64,
-    // In real world scenario, this should just store the ids
-    // mapping to an arena of widgets.
-    children: Vec<NodeId>,
-}
+pub struct FixedSizeWidget(pub Size);
 
-impl LayoutSolver for VerticalCenteredList {
+impl LayoutSolver for FixedSizeWidget {
+    fn constraint(&self, _parent: Constraint) -> Constraint {
+        // Fixed size yield fixed contraint.
+        Constraint::fixed(self.0.width, self.0.height)
+    }
+
     fn build(
         &self,
-        node: &RectNode,
-        tree: &Rectree,
-        positioner: &mut Positioner,
+        _node: &RectNode,
+        _tree: &Rectree,
+        _positioner: &mut Positioner,
     ) -> Size {
-        let width =
-            node.parent_constraint().width.unwrap_or_else(|| {
-                let mut max_width = 0.0;
-
-                for id in self.children.iter() {
-                    let node = tree.get(id);
-                    max_width = node.size().width.max(max_width);
-                }
-
-                max_width
-            }) + self.padding * 2.0;
-
-        let mut height = self.padding;
-        for id in self.children.iter() {
-            let node = tree.get(id);
-            let size = node.size();
-            let remainder = width - size.width;
-
-            let x = remainder * 0.5;
-            let y = height;
-            positioner.set(*id, Vec2::new(x, y));
-
-            height += size.height + self.padding;
-        }
-
-        Size::new(width, height)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct FixedArea {
-    /// Use width if constrained on both axis.
-    /// (Acts like a text widget.)
-    pub use_width: bool,
-    pub target_area: f64,
-}
-
-impl LayoutSolver for FixedArea {
-    fn build(
-        &self,
-        node: &RectNode,
-        _: &Rectree,
-        _: &mut Positioner,
-    ) -> Size {
-        let constraint = node.parent_constraint();
-        match (constraint.width, constraint.height) {
-            (None, None) => {
-                // Square
-                Size::splat(self.target_area.sqrt())
-            }
-            (None, Some(h)) => Size::new(self.target_area / h, h),
-            (Some(w), None) => Size::new(w, self.target_area / w),
-            (Some(w), Some(h)) => {
-                if self.use_width {
-                    Size::new(w, self.target_area / w)
-                } else {
-                    Size::new(self.target_area / h, h)
-                }
-            }
-        }
-    }
-}
-
-pub trait Widget: LayoutSolver + Any {}
-
-impl<T> Widget for T where T: LayoutSolver + Any {}
-
-struct LayoutDemo {
-    tree: Rectree,
-    world: World,
-    window_size: Size,
-    root_id: Option<NodeId>,
-}
-
-impl LayoutDemo {
-    fn new() -> Self {
-        Self {
-            tree: Rectree::new(),
-            world: World::new(),
-            window_size: Size::new(800.0, 600.0),
-            root_id: None,
-        }
-    }
-
-    fn add_widget<W>(
-        &mut self,
-        parent: Option<NodeId>,
-        color: Color,
-        add_content: impl FnOnce(&mut Self, NodeId) -> W,
-    ) -> NodeId
-    where
-        W: Widget + 'static,
-    {
-        let mut node = RectNode::new();
-        if let Some(parent) = parent {
-            node = node.with_parent(parent);
-        }
-        let id = self.tree.insert(node);
-
-        let w = Box::new(add_content(self, id));
-        self.world.widgets.insert(id, w);
-        self.world.node_colors.insert(id, color);
-
-        id
-    }
-
-    fn draw_tree(&self, scene: &mut Scene, transform: Affine) {
-        // Start traversal from the root IDs provided by the tree.
-        for root_id in self.tree.root_ids() {
-            let mut stack = vec![*root_id];
-
-            while let Some(node_id) = stack.pop() {
-                // Get node from tree.
-                let node = self.tree.get(&node_id);
-
-                // Get world_translation.
-                let world_pos = node.world_translation();
-
-                // Reconstruct rect from world pos and size.
-                let world_rect = Rect::from_origin_size(
-                    world_pos.to_point(),
-                    node.size(),
-                );
-
-                // Fetch node color.
-                let color = self
-                    .world
-                    .node_colors
-                    .get(&node_id)
-                    .cloned()
-                    .unwrap_or(Color::WHITE);
-
-                if color.components[3] > 0.0 {
-                    scene.fill(
-                        vello::peniko::Fill::NonZero,
-                        transform,
-                        color,
-                        None,
-                        &world_rect,
-                    );
-
-                    scene.stroke(
-                        &Stroke::new(2.0),
-                        transform,
-                        Color::from_rgb8(255, 255, 255),
-                        None,
-                        &world_rect,
-                    );
-                }
-
-                // Origin markers.
-                if color.components[3] > 0.0 {
-                    let origin =
-                        Circle::new(world_rect.origin(), 5.0);
-
-                    scene.fill(
-                        vello::peniko::Fill::NonZero,
-                        transform,
-                        Color::from_rgb8(255, 50, 50),
-                        None,
-                        &origin,
-                    );
-                }
-
-                // Traverse to children.
-                for child_id in node.children().iter() {
-                    stack.push(*child_id);
-                }
-            }
-        }
-    }
-}
-
-impl VelloDemo for LayoutDemo {
-    fn window_title(&self) -> &'static str {
-        "Layout Showcase"
-    }
-
-    fn initial_logical_size(&self) -> (f64, f64) {
-        (self.window_size.width, self.window_size.height)
-    }
-
-    fn size_changed(&mut self, size: Size) {
-        self.window_size = size;
-
-        // Propagate size change to the root widget.
-        let Some(root_id) = self.root_id else { return };
-
-        let Some(widget) = self.world.widgets.get_mut(&root_id)
-        else {
-            return;
-        };
-
-        if let Some(fixed_widget) = (widget.as_mut() as &mut dyn Any)
-            .downcast_mut::<FixedSize>()
-        {
-            fixed_widget.size = size;
-            // Trigger relayout for the root
-            self.tree.schedule_relayout(root_id);
-        }
-    }
-
-    fn rebuild_scene(
-        &mut self,
-        scene: &mut Scene,
-        _scale_factor: f64,
-    ) {
-        // Create an oscillating translation vector.
-        let time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs_f64();
-
-        for (i, (id, widget)) in
-            self.world.widgets.iter_mut().enumerate()
-        {
-            let widget = widget.as_mut() as &mut dyn Any;
-            if let Some(area) = widget.downcast_mut::<FixedArea>() {
-                let time = time + i as f64;
-                let oscillation = (time.cos() + 1.0) * AREA;
-                area.target_area = AREA + oscillation;
-                self.tree.schedule_relayout(*id);
-            }
-        }
-
-        // Perform layouting.
-        self.tree.layout(&self.world);
-
-        self.draw_tree(scene, Affine::IDENTITY);
-    }
-}
-
-pub trait SplatExt {
-    fn splat(v: f64) -> Self;
-}
-
-impl SplatExt for Size {
-    fn splat(v: f64) -> Self {
-        Size::new(v, v)
+        self.0
     }
 }
