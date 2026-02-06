@@ -567,6 +567,12 @@ mod tests {
         assert!(hits.is_empty());
     }
 
+    /// Largest index win (simulating a stack/z-order).
+    #[inline(always)]
+    fn stack_conflict_resolution(a: RectId, b: RectId) -> RectId {
+        if a > b { a } else { b }
+    }
+
     #[test]
     fn test_query_point_single() {
         let mut tree = Spatree::new();
@@ -582,29 +588,28 @@ mod tests {
 
         tree.build(|r| r.center());
 
-        let conflict_resolution = |a, b| {
-            // Largest index win (simulating a stack/z-order).
-            if a > b { a } else { b }
-        };
-
         // 1. Point hits all 3.
         let p1 = Point::new(5.0, 5.0);
-        let hit = tree.query_point_single(p1, conflict_resolution);
+        let hit =
+            tree.query_point_single(p1, stack_conflict_resolution);
         assert_eq!(hit, Some(id2));
 
         // 2. Point hits `id0` and `id1`, but misses the tiny `id2`.
         let p2 = Point::new(20.0, 20.0);
-        let hit = tree.query_point_single(p2, conflict_resolution);
+        let hit =
+            tree.query_point_single(p2, stack_conflict_resolution);
         assert_eq!(hit, Some(id1));
 
         // 3. Point hits only the large base `id0`.
         let p3 = Point::new(75.0, 75.0);
-        let hit = tree.query_point_single(p3, conflict_resolution);
+        let hit =
+            tree.query_point_single(p3, stack_conflict_resolution);
         assert_eq!(hit, Some(id0));
 
         // 4. Complete miss.
         let p4 = Point::new(150.0, 150.0);
-        let hit = tree.query_point_single(p4, conflict_resolution);
+        let hit =
+            tree.query_point_single(p4, stack_conflict_resolution);
         assert!(hit.is_none());
     }
 
@@ -621,29 +626,28 @@ mod tests {
 
         tree.build(|r| r.center());
 
-        let conflict_resolution = |a, b| {
-            // Largest index win (simulating a stack/z-order).
-            if a > b { a } else { b }
-        };
-
         // 1. Search rect overlaps all 3.
         let q1 = Rect::new(2.0, 2.0, 8.0, 8.0);
-        let hit = tree.query_rect_single(q1, conflict_resolution);
+        let hit =
+            tree.query_rect_single(q1, stack_conflict_resolution);
         assert_eq!(hit, Some(id2));
 
         // 2. Search rect overlaps `id0` and `id1`, but misses `id2`.
         let q2 = Rect::new(15.0, 15.0, 25.0, 25.0);
-        let hit = tree.query_rect_single(q2, conflict_resolution);
+        let hit =
+            tree.query_rect_single(q2, stack_conflict_resolution);
         assert_eq!(hit, Some(id1));
 
         // 3. Search rect overlaps only the largest base `id0`.
         let q3 = Rect::new(60.0, 60.0, 70.0, 70.0);
-        let hit = tree.query_rect_single(q3, conflict_resolution);
+        let hit =
+            tree.query_rect_single(q3, stack_conflict_resolution);
         assert_eq!(hit, Some(id0));
 
         // 4. Complete miss.
         let q4 = Rect::new(200.0, 200.0, 210.0, 210.0);
-        let hit = tree.query_rect_single(q4, conflict_resolution);
+        let hit =
+            tree.query_rect_single(q4, stack_conflict_resolution);
         assert!(hit.is_none());
     }
 }
