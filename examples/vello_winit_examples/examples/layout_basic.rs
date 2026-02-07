@@ -16,61 +16,67 @@ use winit::event_loop::EventLoop;
 fn main() {
     let event_loop = EventLoop::new().unwrap();
     let mut demo = LayoutDemo::new();
+    let mut builder = demo.builder();
 
     let create_column = |b: &mut Builder| {
         Vertical::new(10.0).show(b, |b| {
+            const WIDTH: f64 = 200.0;
             vec![
-                b.add_widget_with_color(css::RED, |_| {
-                    FixedHeightRect(40.0)
-                }),
-                b.add_widget_with_color(css::ORANGE, |_| {
-                    FixedHeightRect(60.0)
-                }),
-                b.add_widget_with_color(css::YELLOW, |_| {
-                    FixedHeightRect(80.0)
-                }),
-                b.add_widget_with_color(css::GREEN, |_| {
-                    FixedHeightRect(100.0)
-                }),
-                b.add_widget_with_color(css::BLUE, |_| {
-                    FixedHeightRect(80.0)
-                }),
-                b.add_widget_with_color(css::VIOLET, |_| {
-                    FixedHeightRect(60.0)
-                }),
-                b.add_widget_with_color(css::PURPLE, |_| {
-                    FixedHeightRect(40.0)
-                }),
+                FixedSizeWidget::new(Size::new(WIDTH, 40.0))
+                    .with_color(css::RED)
+                    .show(b),
+                FixedSizeWidget::new(Size::new(WIDTH, 60.0))
+                    .with_color(css::ORANGE)
+                    .show(b),
+                FixedSizeWidget::new(Size::new(WIDTH, 80.0))
+                    .with_color(css::YELLOW)
+                    .show(b),
+                FixedSizeWidget::new(Size::new(WIDTH, 100.0))
+                    .with_color(css::GREEN)
+                    .show(b),
+                FixedSizeWidget::new(Size::new(WIDTH, 80.0))
+                    .with_color(css::BLUE)
+                    .show(b),
+                FixedSizeWidget::new(Size::new(WIDTH, 60.0))
+                    .with_color(css::VIOLET)
+                    .show(b),
+                FixedSizeWidget::new(Size::new(WIDTH, 40.0))
+                    .with_color(css::PURPLE)
+                    .show(b),
             ]
         })
     };
 
-    let root_id = demo.add_root_widget(Color::TRANSPARENT, |b| {
-        Padding::all(20.0).show(b, |b| {
-            Vertical::new(20.0).show(b, |b| {
-                vec![
-                    Horizontal::new(50.0).show(b, |b| {
-                        vec![
-                            create_column(b),
-                            create_column(b),
-                            create_column(b),
-                        ]
-                    }),
-                    b.add_widget_with_color(css::CYAN, |_| {
-                        FixedWidthRect(50.0)
-                    }),
-                    b.add_widget_with_color(css::SALMON, |_| {
-                        FixedWidthRect(200.0)
-                    }),
-                    b.add_widget_with_color(css::RED, |_| {
-                        FixedWidthRect(800.0)
-                    }),
-                ]
-            })
+    let root_id = FixedSizeWidget::new(builder.demo.window_size)
+        .show_with_child(&mut builder, |b| {
+            Padding::all(20.0).show(b, |b| {
+                Vertical::new(20.0).show(b, |b| {
+                    const HEIGHT: f64 = 60.0;
+                    vec![
+                        Horizontal::new(50.0).show(b, |b| {
+                            vec![
+                                create_column(b),
+                                create_column(b),
+                                create_column(b),
+                            ]
+                        }),
+                        FixedSizeWidget::new(Size::new(50.0, HEIGHT))
+                            .with_color(css::CYAN)
+                            .show(b),
+                        FixedSizeWidget::new(Size::new(
+                            200.0, HEIGHT,
+                        ))
+                        .with_color(css::SALMON)
+                        .show(b),
+                        FixedSizeWidget::new(Size::new(
+                            800.0, HEIGHT,
+                        ))
+                        .with_color(css::RED)
+                        .show(b),
+                    ]
+                })
+            });
         });
-
-        FixedSizeWidget(b.demo.window_size)
-    });
 
     // Store the root ID for future reference.
     demo.root_id = Some(root_id);
@@ -85,14 +91,12 @@ fn main() {
 
 pub struct World {
     widgets: HashMap<NodeId, Box<dyn Widget>>,
-    node_colors: HashMap<NodeId, Color>,
 }
 
 impl World {
     fn new() -> Self {
         Self {
             widgets: HashMap::new(),
-            node_colors: HashMap::new(),
         }
     }
 }
@@ -116,43 +120,27 @@ pub struct LayoutDemo {
 
 pub struct Builder<'a> {
     pub demo: &'a mut LayoutDemo,
-    pub parent_id: NodeId,
+    pub parent_id: Option<NodeId>,
 }
 
 impl Builder<'_> {
-    pub fn add_widget_impl<W: Widget + 'static>(
-        &mut self,
-        color: Option<Color>,
-        add_content: impl FnOnce(&mut Builder) -> W,
-    ) -> NodeId {
-        let node = RectNode::new().with_parent(self.parent_id);
-        let parent_id = self.demo.tree.insert(node);
-
-        let w = Box::new(add_content(&mut Builder {
-            demo: self.demo,
-            parent_id,
-        }));
-        self.demo.world.widgets.insert(parent_id, w);
-        if let Some(color) = color {
-            self.demo.world.node_colors.insert(parent_id, color);
-        }
-
-        parent_id
-    }
-
     pub fn add_widget<W: Widget + 'static>(
         &mut self,
         add_content: impl FnOnce(&mut Builder) -> W,
     ) -> NodeId {
-        self.add_widget_impl(None, add_content)
-    }
+        let mut node = RectNode::new();
+        if let Some(parent_id) = self.parent_id {
+            node = node.with_parent(parent_id);
+        }
+        let id = self.demo.tree.insert(node);
 
-    pub fn add_widget_with_color<W: Widget + 'static>(
-        &mut self,
-        color: Color,
-        add_content: impl FnOnce(&mut Builder) -> W,
-    ) -> NodeId {
-        self.add_widget_impl(Some(color), add_content)
+        let w = Box::new(add_content(&mut Builder {
+            demo: self.demo,
+            parent_id: Some(id),
+        }));
+        self.demo.world.widgets.insert(id, w);
+
+        id
     }
 }
 
@@ -166,22 +154,11 @@ impl LayoutDemo {
         }
     }
 
-    pub fn add_root_widget<W: Widget + 'static>(
-        &mut self,
-        color: Color,
-        add_content: impl FnOnce(&mut Builder) -> W,
-    ) -> NodeId {
-        let node = RectNode::new();
-        let parent_id = self.tree.insert(node);
-
-        let w = Box::new(add_content(&mut Builder {
+    pub fn builder(&mut self) -> Builder<'_> {
+        Builder {
             demo: self,
-            parent_id,
-        }));
-        self.world.widgets.insert(parent_id, w);
-        self.world.node_colors.insert(parent_id, color);
-
-        parent_id
+            parent_id: None,
+        }
     }
 
     fn draw_tree(&self, scene: &mut Scene, transform: Affine) {
@@ -202,10 +179,19 @@ impl LayoutDemo {
                     node.size(),
                 );
 
-                // Fetch node color.
-                let color = self.world.node_colors.get(&node_id);
-
-                if let Some(color) = color {
+                // Hack to get the color of `FixedSizeWidget`.
+                // In real world scenario, you would want to
+                // implement a `draw` method for your `Widget` trait.
+                if let Some(color) =
+                    self.world.widgets.get(&node_id).and_then(
+                        |widget| {
+                            let widget: &dyn Any = widget.as_ref();
+                            widget
+                                .downcast_ref::<FixedSizeWidget>()
+                                .map(|f| f.color)
+                        },
+                    )
+                {
                     scene.fill(
                         vello::peniko::Fill::NonZero,
                         transform,
@@ -272,8 +258,8 @@ impl VelloDemo for LayoutDemo {
         if let Some(fixed_widget) = (widget.as_mut() as &mut dyn Any)
             .downcast_mut::<FixedSizeWidget>()
         {
-            fixed_widget.0 = size;
-            // Trigger relayout for the root
+            fixed_widget.size = size;
+            // Trigger relayout for the root.
             self.tree.schedule_relayout(root_id);
         }
     }
@@ -281,12 +267,12 @@ impl VelloDemo for LayoutDemo {
     fn rebuild_scene(
         &mut self,
         scene: &mut Scene,
-        _scale_factor: f64,
+        scale_factor: f64,
     ) {
         // Perform layouting.
         self.tree.layout(&self.world);
 
-        self.draw_tree(scene, Affine::IDENTITY);
+        self.draw_tree(scene, Affine::scale(scale_factor));
     }
 }
 
@@ -527,44 +513,17 @@ impl LayoutSolver for PaddingWidget {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct FixedWidthRect(pub f64);
-
-impl LayoutSolver for FixedWidthRect {
-    fn build(
-        &self,
-        node: &RectNode,
-        _: &Rectree,
-        _: &mut Positioner,
-    ) -> Size {
-        let height = node.parent_constraint().height.unwrap_or(200.0);
-        Size::new(self.0, height)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct FixedHeightRect(pub f64);
-
-impl LayoutSolver for FixedHeightRect {
-    fn build(
-        &self,
-        node: &RectNode,
-        _: &Rectree,
-        _: &mut Positioner,
-    ) -> Size {
-        let width = node.parent_constraint().width.unwrap_or(200.0);
-        Size::new(width, self.0)
-    }
-}
-
 /// A widget that forces a specific size that ignore parent constraints.
 #[derive(Debug, Clone)]
-pub struct FixedSizeWidget(pub Size);
+pub struct FixedSizeWidget {
+    pub size: Size,
+    pub color: Color,
+}
 
 impl LayoutSolver for FixedSizeWidget {
     fn constraint(&self, _parent: Constraint) -> Constraint {
         // Fixed size yield fixed contraint.
-        Constraint::fixed(self.0.width, self.0.height)
+        Constraint::fixed(self.size.width, self.size.height)
     }
 
     fn build(
@@ -573,6 +532,35 @@ impl LayoutSolver for FixedSizeWidget {
         _tree: &Rectree,
         _positioner: &mut Positioner,
     ) -> Size {
-        self.0
+        self.size
+    }
+}
+
+impl FixedSizeWidget {
+    pub fn new(size: Size) -> Self {
+        Self {
+            size,
+            color: Color::TRANSPARENT,
+        }
+    }
+
+    pub fn with_color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
+    }
+
+    pub fn show(self, b: &mut Builder) -> NodeId {
+        b.add_widget(|_| self)
+    }
+
+    pub fn show_with_child(
+        self,
+        b: &mut Builder,
+        add_content: impl FnOnce(&mut Builder),
+    ) -> NodeId {
+        b.add_widget(|b| {
+            add_content(b);
+            self
+        })
     }
 }

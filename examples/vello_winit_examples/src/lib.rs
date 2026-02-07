@@ -225,7 +225,6 @@ impl<D: VelloDemo> ApplicationHandler for VelloWinitApp<'_, D> {
                 };
 
                 self.handle_resize(scale_factor, size);
-
                 self.render();
             }
             WindowEvent::RedrawRequested => {
