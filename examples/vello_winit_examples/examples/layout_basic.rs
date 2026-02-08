@@ -49,32 +49,40 @@ fn main() {
 
     let root_id = FixedSizeWidget::new(builder.demo.window_size)
         .show_with_child(&mut builder, |b| {
-            Padding::all(20.0).show(b, |b| {
-                Vertical::new(20.0).show(b, |b| {
-                    const HEIGHT: f64 = 60.0;
-                    vec![
-                        Horizontal::new(50.0).show(b, |b| {
-                            vec![
-                                create_column(b),
-                                create_column(b),
-                                create_column(b),
-                            ]
-                        }),
-                        FixedSizeWidget::new(Size::new(50.0, HEIGHT))
+            PlaceWidget::new(Alignment::Both {
+                h: HAlign::Center,
+                v: VAlign::Horizon,
+            })
+            .show(b, |b| {
+                Padding::all(20.0).show(b, |b| {
+                    Vertical::new(20.0).show(b, |b| {
+                        const HEIGHT: f64 = 60.0;
+                        vec![
+                            Horizontal::new(50.0).show(b, |b| {
+                                vec![
+                                    create_column(b),
+                                    create_column(b),
+                                    create_column(b),
+                                ]
+                            }),
+                            FixedSizeWidget::new(Size::new(
+                                50.0, HEIGHT,
+                            ))
                             .with_color(css::CYAN)
                             .show(b),
-                        FixedSizeWidget::new(Size::new(
-                            200.0, HEIGHT,
-                        ))
-                        .with_color(css::SALMON)
-                        .show(b),
-                        FixedSizeWidget::new(Size::new(
-                            800.0, HEIGHT,
-                        ))
-                        .with_color(css::RED)
-                        .show(b),
-                    ]
-                })
+                            FixedSizeWidget::new(Size::new(
+                                200.0, HEIGHT,
+                            ))
+                            .with_color(css::SALMON)
+                            .show(b),
+                            FixedSizeWidget::new(Size::new(
+                                800.0, HEIGHT,
+                            ))
+                            .with_color(css::RED)
+                            .show(b),
+                        ]
+                    })
+                });
             });
         });
 
@@ -279,6 +287,106 @@ impl VelloDemo for LayoutDemo {
 // Below are some demo widgets to demonstrate how a UI library could
 // potentially use `rectree` as a backend!
 
+#[derive(Debug, Clone, Copy)]
+pub enum HAlign {
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum VAlign {
+    Top,
+    Horizon,
+    Bottom,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Alignment {
+    Both { h: HAlign, v: VAlign },
+    Horizontal(HAlign),
+    Vertical(VAlign),
+}
+
+/// Place the child widget in a certain alignment
+pub struct PlaceWidget {
+    pub alignment: Alignment,
+}
+
+impl PlaceWidget {
+    pub fn new(alignment: Alignment) -> Self {
+        Self { alignment }
+    }
+
+    pub fn show(
+        self,
+        b: &mut Builder,
+        add_content: impl FnOnce(&mut Builder),
+    ) -> NodeId {
+        b.add_widget(|b| {
+            add_content(b);
+            self
+        })
+    }
+}
+
+impl LayoutSolver for PlaceWidget {
+    fn build(
+        &self,
+        node: &RectNode,
+        tree: &Rectree,
+        positioner: &mut Positioner,
+    ) -> Size {
+        let constraint = node.parent_constraint();
+        let (halign, valign) = match self.alignment {
+            Alignment::Both { h, v } => (Some(h), Some(v)),
+            Alignment::Horizontal(halign) => (Some(halign), None),
+            Alignment::Vertical(valign) => (None, Some(valign)),
+        };
+
+        for (id, child) in
+            node.children().iter().map(|id| (id, tree.get(id)))
+        {
+            let child_size = child.size();
+            let mut translation = Vec2::ZERO;
+            let mut should_position = false;
+
+            if let Some(halign) = halign
+                && let Some(width) = constraint.width
+            {
+                should_position = true;
+                translation.x = match halign {
+                    HAlign::Left => 0.0,
+                    HAlign::Center => {
+                        width * 0.5 - child_size.width * 0.5
+                    }
+                    HAlign::Right => width - child_size.width,
+                };
+            }
+
+            if let Some(valign) = valign
+                && let Some(height) = constraint.height
+            {
+                should_position = true;
+                translation.y = match valign {
+                    VAlign::Top => 0.0,
+                    VAlign::Horizon => {
+                        height * 0.5 - child_size.height * 0.5
+                    }
+                    VAlign::Bottom => height - child_size.height,
+                };
+            }
+
+            if should_position {
+                positioner.set(*id, translation);
+            }
+        }
+
+        // Placing the widget should not allocate any size.
+        Size::ZERO
+    }
+}
+
 /// [`HorizontalWidget`] builder.
 #[derive(Debug, Clone)]
 pub struct Horizontal {
@@ -301,7 +409,7 @@ impl Horizontal {
     }
 }
 
-// Horizontal layout widget.
+/// Horizontal layout widget.
 #[derive(Debug, Clone)]
 pub struct HorizontalWidget {
     pub style: Horizontal,
@@ -309,16 +417,6 @@ pub struct HorizontalWidget {
 }
 
 impl LayoutSolver for HorizontalWidget {
-    fn constraint(
-        &self,
-        parent_constraint: Constraint,
-    ) -> Constraint {
-        Constraint {
-            width: None,
-            height: parent_constraint.height,
-        }
-    }
-
     fn build(
         &self,
         _node: &RectNode,
@@ -371,7 +469,7 @@ impl Vertical {
     }
 }
 
-// Vertical layout widget.
+/// Vertical layout widget.
 #[derive(Debug, Clone)]
 pub struct VerticalWidget {
     pub style: Vertical,
@@ -379,16 +477,6 @@ pub struct VerticalWidget {
 }
 
 impl LayoutSolver for VerticalWidget {
-    fn constraint(
-        &self,
-        parent_constraint: Constraint,
-    ) -> Constraint {
-        Constraint {
-            width: parent_constraint.width,
-            height: None,
-        }
-    }
-
     fn build(
         &self,
         _node: &RectNode,
