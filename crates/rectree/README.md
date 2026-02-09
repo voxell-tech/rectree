@@ -19,6 +19,8 @@ Rectree is designed to be:
 - **Policy-free**: layout behavior is defined by user-provided
   algorithms.
 
+![layout_basic](/.github/assets/layout_basic.png)
+
 ## Core Concepts
 
 - `Rectree`: a hierarchical tree of rectangular nodes.
